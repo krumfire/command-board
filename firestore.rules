@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Open to anyone with the site URL — no login in this app.
+    // Scoped narrowly to only the collections Command Board uses,
+    // so nothing else in the project is exposed.
+    match /icMeta/{docId} {
+      allow read, write: if true;
+    }
+    match /icIncidents/{docId} {
+      allow read, write: if true;
+
+      // Subcollection rules are NOT inherited from the parent match
+      // above — Firestore denies by default unless a rule explicitly
+      // covers this path, so attachments need their own line here.
+      match /attachments/{attId} {
+        allow read, write: if true;
+      }
+    }
+    // Mayday alerts — a separate, minimal collection from the main
+    // incident documents above, specifically so a Mayday reaches
+    // every device instantly via its own listener rather than being
+    // subject to the main incident sync's local-edit-avoidance delay.
+    match /icMayday/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
