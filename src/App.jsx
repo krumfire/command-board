@@ -1898,7 +1898,7 @@ function ResourceCard({ r, onMove, onUpdate, onRemove, now, dragProps, isDraggin
   );
 }
 
-function TabResources({ resources, setResources, now, incident, setIncident, parIntervalMinutes, departments, onAddDepartment, onAddUnitUnderDepartment, onRenameDepartment, onDeleteDepartment, onReorderDepartment, onRenameUnit, onDeleteUnit, onMoveUnit, onReorderUnit, assignmentPresets, assignmentsByType, onSaveAssignmentPreset, onRenameAssignment, onDeleteAssignment, onReorderAssignment, resourceKindPresets, onAddResourceKind, onRenameResourceKind, onDeleteResourceKind, onReorderResourceKind, onOpenManageResources, taskPresets, tasksByType, onSaveTaskPreset, resourceColumnOrder, setResourceColumnOrder, onTriggerMayday, onStartPar }) {
+function TabResources({ resources, setResources, now, incident, setIncident, parIntervalMinutes, departments, onAddDepartment, onAddUnitUnderDepartment, onRenameDepartment, onDeleteDepartment, onReorderDepartment, onRenameUnit, onDeleteUnit, onMoveUnit, onReorderUnit, assignmentPresets, assignmentsByType, onSaveAssignmentPreset, onRenameAssignment, onDeleteAssignment, onReorderAssignment, resourceKindPresets, onAddResourceKind, onRenameResourceKind, onDeleteResourceKind, onReorderResourceKind, taskPresets, tasksByType, onSaveTaskPreset, resourceColumnOrder, setResourceColumnOrder, onTriggerMayday, onStartPar }) {
   // Drag state lives here (not per-card) since the floating preview and
   // column highlight need to render across the whole board. Built on
   // the Pointer Events API + elementFromPoint rather than native HTML5
@@ -1982,9 +1982,7 @@ function TabResources({ resources, setResources, now, incident, setIncident, par
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "stretch" }}>
-        <Panel title="Check In Resource" icon={Truck} style={{ flex: "2 1 420px" }} right={
-          <Btn kind="subtle" icon={Settings} onClick={onOpenManageResources} style={{ padding: "6px 10px", fontSize: 12 }}>Manage Resources</Btn>
-        }>
+        <Panel title="Check In Resource" icon={Truck} style={{ flex: "2 1 420px" }}>
           <ResourceForm onAdd={addResource} departments={departments} onAddDepartment={onAddDepartment} onAddUnitUnderDepartment={onAddUnitUnderDepartment} assignmentPresets={assignmentPresets} onSaveAssignmentPreset={onSaveAssignmentPreset} resourceKindPresets={resourceKindPresets} onAddResourceKind={onAddResourceKind} taskPresets={taskPresets} onSaveTaskPreset={onSaveTaskPreset} incidentType={incident.type} assignmentsByType={assignmentsByType} tasksByType={tasksByType} />
         </Panel>
         <Panel title="Objectives" icon={CheckCircle2} style={{ flex: "1 1 240px", maxWidth: 340 }}>
@@ -8083,7 +8081,6 @@ function AppInner({ onLock, theme, toggleTheme }) {
                 onRenameAssignment={renameAssignmentPreset} onDeleteAssignment={deleteAssignmentPreset} onReorderAssignment={reorderAssignmentPresets}
                 resourceKindPresets={presets.resourceKinds} onAddResourceKind={addResourceKind} onRenameResourceKind={renameResourceKind}
                 onDeleteResourceKind={deleteResourceKind} onReorderResourceKind={reorderResourceKinds}
-                onOpenManageResources={() => setShowManageResourcesAuth(true)}
                 taskPresets={presets.tasks} tasksByType={presets.tasksByType} onSaveTaskPreset={saveTaskPreset}
                 resourceColumnOrder={resourceColumnOrder} setResourceColumnOrder={setResourceColumnOrder}
                 onTriggerMayday={() => setShowMaydayConfirm(true)} onStartPar={startPar}
