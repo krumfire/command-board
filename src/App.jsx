@@ -6754,7 +6754,7 @@ function PasswordConfirmModal({ title, message, onConfirm, onCancel }) {
   );
 }
 
-function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOpenArchive, onOpenAdmin, mandatory }) {
+function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOpenArchive, onOpenAdmin, onLock, mandatory }) {
   const active = index.filter(i => !i.archived);
   const archivedCount = index.length - active.length;
   const [confirmAction, setConfirmAction] = useState(null); // { type: "archive" | "delete", id, name }
@@ -6798,6 +6798,7 @@ function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOp
                 <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 14 }}>Menu</span>
                 <button onClick={() => setShowLibMenu(false)} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={18} /></button>
               </div>
+              <Btn kind="ghost" icon={Lock} onClick={() => { setShowLibMenu(false); onLock(); }} style={{ width: "100%", justifyContent: "center" }}>Lock</Btn>
               <Btn kind="ghost" icon={Settings} onClick={() => { setShowLibMenu(false); onOpenAdmin(); }} style={{ width: "100%", justifyContent: "center" }}>Admin</Btn>
             </div>
           </div>
@@ -8121,7 +8122,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
 
       {ready && (showLib || !incidentLoaded) && (
         <LibraryModal index={index} onClose={() => setShowLib(false)} onLoad={openIncident} onNew={startNew} onDelete={deleteIncident}
-          onArchive={archiveIncident} onOpenArchive={() => setShowArchive(true)} onOpenAdmin={() => setShowAdminAuth(true)} mandatory={!incidentLoaded} />
+          onArchive={archiveIncident} onOpenArchive={() => setShowArchive(true)} onOpenAdmin={() => setShowAdminAuth(true)} onLock={onLock} mandatory={!incidentLoaded} />
       )}
 
       {showAdminAuth && (
