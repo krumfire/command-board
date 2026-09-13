@@ -887,29 +887,51 @@ function Btn({ children, onClick, kind = "ghost", icon: Icon, style, type = "but
   );
 }
 
-// A small (?) icon that reveals a text block on hover, for moving
+// A small (i) icon that reveals a text block on hover, for moving
 // longer explanatory copy out of a panel's visible body — into an
 // on-demand popup instead — without losing the explanation entirely.
-// No portal needed here (unlike the Weather tab's dropdown): nothing
-// in the areas this is used clips overflow the way that dropdown's
-// scrolling tab-nav parent did, so a plain absolutely-positioned
-// popup is enough.
+// Rendered via a portal, positioned from the icon's own measured
+// screen position, rather than a plain CSS-anchored absolute popup —
+// most uses sit near a panel's right edge (the `right` header slot),
+// where anchoring a popup's left edge to the icon pushes the whole
+// box off the right side of the screen. Measuring lets it flip to
+// anchor from its right edge instead whenever there isn't enough
+// room to the right, so it always lands fully on-screen.
 function InfoTooltip({ children, width = 320 }) {
-  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState(null); // { top, left } | { top, right } | null when closed
+  const iconRef = useRef(null);
+  const open = () => {
+    const rect = iconRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 12;
+    // Anchor from the icon's right edge (popup grows leftward) when
+    // there isn't room for it to grow rightward from the left edge —
+    // otherwise anchor from the left edge as the natural default.
+    if (rect.left + width + margin > window.innerWidth) {
+      setPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    } else {
+      setPos({ top: rect.bottom + 6, left: rect.left });
+    }
+  };
+  const close = () => setPos(null);
   return (
-    <span style={{ position: "relative", display: "inline-flex", verticalAlign: "middle" }}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}>
+    <span ref={iconRef} style={{ position: "relative", display: "inline-flex", verticalAlign: "middle" }}
+      onMouseEnter={open}
+      onMouseLeave={close}>
       <Info size={14} color={COLORS.muted} style={{ cursor: "help" }} />
-      {show && (
-        <div style={{
-          position: "absolute", top: "100%", left: 0, marginTop: 6, zIndex: 100, width, maxWidth: "80vw",
-          background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 10, fontSize: 11.5, color: COLORS.muted,
-          lineHeight: 1.5, fontWeight: 400, textTransform: "none", letterSpacing: "normal", whiteSpace: "normal",
-        }}>
+      {pos && createPortal(
+        <div
+          onMouseEnter={open}
+          onMouseLeave={close}
+          style={{
+            position: "fixed", top: pos.top, left: pos.left, right: pos.right, zIndex: 4000, width, maxWidth: "80vw",
+            background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 10, fontSize: 11.5, color: COLORS.muted,
+            lineHeight: 1.5, fontWeight: 400, textTransform: "none", letterSpacing: "normal", whiteSpace: "normal",
+          }}>
           {children}
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );
@@ -3264,9 +3286,20 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
     // it depending on scroll position, an inconsistent landing spot
     // each time) — a small 12px gap keeps it from sitting flush
     // against the sticky bar.
-    const headerHeight = stickyHeaderRef?.current?.getBoundingClientRect().height || 0;
-    const elTop = el.getBoundingClientRect().top + window.scrollY;
-    window.scrollTo({ top: elTop - headerHeight - 12, behavior: "smooth" });
+    const scrollToTarget = () => {
+      const headerHeight = stickyHeaderRef?.current?.getBoundingClientRect().height || 0;
+      const elTop = el.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: elTop - headerHeight - 12, behavior: "smooth" });
+    };
+    scrollToTarget();
+    // Re-run shortly after: switching tabs to reach this section can
+    // mount Current Weather/Live Radar fresh, and their GPS/API data
+    // arrives asynchronously — if it resolves and changes panel
+    // heights just after the scroll above already ran, the target
+    // position it used is now stale. Re-measuring and re-scrolling
+    // once things have had a moment to settle corrects for that.
+    const t = setTimeout(scrollToTarget, 500);
+    return () => clearTimeout(t);
   }, [scrollRequest, stickyHeaderRef]);
 
   const containerRef = useRef(null);
