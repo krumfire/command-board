@@ -3199,7 +3199,7 @@ const US_STATE_ABBREVIATIONS = {
   "District of Columbia": "DC",
 };
 
-function TabWeather({ scrollRequest }) {
+function TabWeather({ scrollRequest, stickyHeaderRef }) {
   const [coords, setCoords] = useState(null); // { lat, lng }
   const [locationName, setLocationName] = useState(""); // e.g. "Denton, TX", from reverse geocoding
   const [locError, setLocError] = useState("");
@@ -3217,8 +3217,18 @@ function TabWeather({ scrollRequest }) {
   useEffect(() => {
     if (!scrollRequest) return;
     const refs = { current: currentSectionRef, radar: radarSectionRef, kbdi: kbdiSectionRef };
-    refs[scrollRequest.target]?.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [scrollRequest]);
+    const el = refs[scrollRequest.target]?.current;
+    if (!el) return;
+    // Lands the panel's own header just below the sticky app
+    // header/tab bar, rather than centering it in the viewport (which
+    // put varying amounts of the previous section still in view above
+    // it depending on scroll position, an inconsistent landing spot
+    // each time) — a small 12px gap keeps it from sitting flush
+    // against the sticky bar.
+    const headerHeight = stickyHeaderRef?.current?.getBoundingClientRect().height || 0;
+    const elTop = el.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({ top: elTop - headerHeight - 12, behavior: "smooth" });
+  }, [scrollRequest, stickyHeaderRef]);
 
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -7153,6 +7163,12 @@ function AppInner({ onLock, theme, toggleTheme }) {
   // parent for placement.
   const [weatherDropdownPos, setWeatherDropdownPos] = useState(null);
   const weatherTabRef = useRef(null);
+  // Measures the sticky header+tab-nav bar's own height at the moment
+  // of scrolling (see TabWeather's effect) so a jump to a section can
+  // land its panel header exactly below that bar rather than either
+  // hiding behind it or over-scrolling into the middle of the
+  // viewport.
+  const stickyHeaderRef = useRef(null);
   // The dropdown itself renders via a portal (see below), so it's a
   // separate DOM subtree from the tab button — moving the mouse
   // between them would otherwise trigger the tab's onMouseLeave
@@ -8047,7 +8063,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
       {incidentLoaded && (
         <div className="no-print">
         {/* HEADER */}
-        <div style={{ borderBottom: `1px solid ${COLORS.line}`, background: COLORS.panel, position: "sticky", top: 0, zIndex: 10 }}>
+        <div ref={stickyHeaderRef} style={{ borderBottom: `1px solid ${COLORS.line}`, background: COLORS.panel, position: "sticky", top: 0, zIndex: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", flexWrap: "wrap", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <img src={KFD_PATCH_DATA_URI} alt="KFD Patch" style={{ width: 34, height: 44, objectFit: "contain", flexShrink: 0 }} />
@@ -8178,7 +8194,15 @@ function AppInner({ onLock, theme, toggleTheme }) {
               onMouseEnter={openWeatherDropdown}
               onMouseLeave={scheduleCloseWeatherDropdown}
               style={{
-                position: "fixed", top: weatherDropdownPos.top, left: weatherDropdownPos.left, zIndex: 200, minWidth: 170,
+                // A much higher z-index than anything else in the app
+                // (existing overlays top out at 3000) — Leaflet's own
+                // panes/controls on the radar map use z-index values
+                // in the same general range internally, and iframes
+                // like the KBDI embed are also known to sometimes
+                // ignore normal stacking order at lower values, so
+                // this needs real headroom above both rather than
+                // just beating the dropdown's previous neighbors.
+                position: "fixed", top: weatherDropdownPos.top, left: weatherDropdownPos.left, zIndex: 4000, minWidth: 170,
                 background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 4, display: "flex", flexDirection: "column", gap: 1,
               }}>
@@ -8221,7 +8245,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
                 onTriggerMayday={() => setShowMaydayConfirm(true)} onStartPar={startPar}
               />}
               {tab === "mapping" && <TabMapping mapData={mapData} setMapData={setMapData} resources={resources} assignmentPresets={presets.assignments} resourceColumnOrder={resourceColumnOrder} />}
-              {tab === "weather" && <TabWeather scrollRequest={weatherScrollRequest} />}
+              {tab === "weather" && <TabWeather scrollRequest={weatherScrollRequest} stickyHeaderRef={stickyHeaderRef} />}
               {tab === "org" && <TabOrg org={org} setOrg={setOrg} resources={resources} assignmentPresets={presets.assignments} resourceColumnOrder={resourceColumnOrder} departments={presets.departments} />}
               {tab === "rehab" && <TabRehab rehab={rehab} setRehab={setRehab} resources={resources} now={effectiveNow} />}
               {tab === "icsforms" && (
