@@ -2991,7 +2991,11 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
           );
         })()}
         <div style={{ position: "relative" }}>
-          <div ref={containerRef} style={{ width: "100%", height: "65vh", minHeight: 420, borderRadius: 6, border: `1px solid ${COLORS.line}` }} />
+          {/* Same stacking-context containment as the Weather tab's
+              radar map — keeps Leaflet's internal panes/controls
+              (default up to z-index 1000) from rendering on top of
+              the sticky app header when scrolled. */}
+          <div ref={containerRef} style={{ width: "100%", height: "65vh", minHeight: 420, borderRadius: 6, border: `1px solid ${COLORS.line}`, position: "relative", zIndex: 0 }} />
           {tracking && gpsCoords && (
             <div
               onClick={async () => {
@@ -3547,7 +3551,15 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
           {radarError && <span style={{ color: COLORS.dangerText, display: "block", marginTop: 4 }}>{radarError}</span>}
           {!coords && !locError && <span style={{ display: "block", marginTop: 4 }}>Waiting for GPS location...</span>}
         </div>
-        <div ref={containerRef} style={{ width: "100%", height: "60vh", minHeight: 380, borderRadius: 6, border: `1px solid ${COLORS.line}` }} />
+        {/* position+zIndex here creates its own CSS stacking context,
+            containing Leaflet's internal z-index values (its panes
+            and controls default to up to 1000) so they can never
+            escape and render on top of the sticky app header above,
+            which sits at a much lower z-index intentionally — that
+            header needs to stay beneath this app's own modals
+            (50-100), so it can't simply be raised above Leaflet's
+            range instead without breaking those. */}
+        <div ref={containerRef} style={{ width: "100%", height: "60vh", minHeight: 380, borderRadius: 6, border: `1px solid ${COLORS.line}`, position: "relative", zIndex: 0 }} />
         {activeFrame && (
           <div style={{ fontSize: 11.5, color: COLORS.faint, marginTop: 6, fontFamily: "'IBM Plex Mono', monospace" }}>
             Frame: {new Date(activeFrame.time * 1000).toLocaleTimeString()}
@@ -3568,10 +3580,14 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
             the fallback for that case, since there's no reliable way
             to detect a same-origin-policy block from inside the page
             that's doing the embedding. */}
+        {/* Same stacking-context containment as the radar map above —
+            iframes are a separate embedded browsing context and can
+            be prone to rendering above other page content regardless
+            of z-index unless explicitly contained this way. */}
         <iframe
           src="https://twcgis.tamu.edu/KBDI/"
           title="Texas KBDI Interactive County Map"
-          style={{ width: "100%", height: "60vh", minHeight: 380, borderRadius: 6, border: `1px solid ${COLORS.line}` }}
+          style={{ width: "100%", height: "60vh", minHeight: 380, borderRadius: 6, border: `1px solid ${COLORS.line}`, position: "relative", zIndex: 0 }}
         />
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
           <a href="https://twcgis.tamu.edu/KBDI/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: COLORS.amber }}>Open in new tab ↗</a>
