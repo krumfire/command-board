@@ -3575,17 +3575,23 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
 
       <div ref={radarSectionRef}>
       <Panel title="Live Radar" icon={CloudSun} right={
-        radarFrames.length > 0 && (
-          <Btn kind={radarPlaying ? "solid" : "subtle"} icon={radarPlaying ? Pause : Play} onClick={() => setRadarPlaying(p => !p)} style={{ padding: "6px 11px", fontSize: 12.5 }}>
-            {radarPlaying ? "Pause" : "Animate"}
-          </Btn>
-        )
-      }>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
-          Centered on your current GPS location. Pan and zoom like any other map — the radar overlay updates automatically every 5 minutes, and animates automatically for a moving view of the storm. Use Pause to stop on a single frame.
-          {radarError && <span style={{ color: COLORS.dangerText, display: "block", marginTop: 4 }}>{radarError}</span>}
-          {!coords && !locError && <span style={{ display: "block", marginTop: 4 }}>Waiting for GPS location...</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <InfoTooltip width={300}>
+            Centered on your current GPS location. Pan and zoom like any other map — the radar overlay updates automatically every 5 minutes, and animates automatically for a moving view of the storm. Use Pause to stop on a single frame.
+          </InfoTooltip>
+          {radarFrames.length > 0 && (
+            <Btn kind={radarPlaying ? "solid" : "subtle"} icon={radarPlaying ? Pause : Play} onClick={() => setRadarPlaying(p => !p)} style={{ padding: "6px 11px", fontSize: 12.5 }}>
+              {radarPlaying ? "Pause" : "Animate"}
+            </Btn>
+          )}
         </div>
+      }>
+        {(radarError || (!coords && !locError)) && (
+          <div style={{ fontSize: 11.5, marginBottom: 10, lineHeight: 1.5 }}>
+            {radarError && <span style={{ color: COLORS.dangerText, display: "block" }}>{radarError}</span>}
+            {!coords && !locError && <span style={{ color: COLORS.muted, display: "block" }}>Waiting for GPS location...</span>}
+          </div>
+        )}
         {/* position+zIndex here creates its own CSS stacking context,
             containing Leaflet's internal z-index values (its panes
             and controls default to up to 1000) so they can never
@@ -3604,10 +3610,11 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
       </div>
 
       <div ref={kbdiSectionRef}>
-      <Panel title="Texas KBDI Drought Index" icon={AlertTriangle}>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
+      <Panel title="Texas KBDI Drought Index" icon={AlertTriangle} right={
+        <InfoTooltip width={320}>
           The Keetch-Byram Drought Index measures soil/fuel moisture depletion on a 0–800 scale (0 = saturated, 800 = extreme drought) — higher values mean drier fuels and greater wildfire potential. Interactive county-level map from Texas A&M Forest Service — pan and zoom to identify the mean, maximum, and minimum KBDI for a specific county.
-        </div>
+        </InfoTooltip>
+      }>
         {/* Embedded directly rather than just linked — this is Texas
             A&M's own ArcGIS application, outside this app's control,
             so if their site ever blocks iframe embedding this would
@@ -3710,10 +3717,11 @@ function TabOrg({ org, setOrg, resources, assignmentPresets, resourceColumnOrder
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="Organization Chart" icon={Shield}>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 18, lineHeight: 1.5 }}>
+      <Panel title="Organization Chart" icon={Shield} right={
+        <InfoTooltip width={320}>
           Type a name into any box to fill that position, or use the ▾ button beside it to pick from the full list of assignments/divisions set up under Manage Resources. Use "+ Add Below" to expand into further sub-units — add as many levels as the incident needs.
-        </div>
+        </InfoTooltip>
+      }>
         <div style={{ overflowX: "auto", paddingBottom: 8 }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: "fit-content", margin: "0 auto" }}>
             {/* Incident Command, auto-synced from the Resource Board —
@@ -4791,10 +4799,11 @@ function TabICSForms(props) {
   const { formsUsed, toggleFormUsed } = props;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="Forms in Use" icon={CheckCircle2}>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
+      <Panel title="Forms in Use" icon={CheckCircle2} right={
+        <InfoTooltip width={300}>
           Check the additional forms this incident is using — they're included in Print/Export alongside the always-included Tactical Worksheet info. Click a form's name to open and edit it below.
-        </div>
+        </InfoTooltip>
+      }>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {ICS_FORM_OPTIONS.map(o => {
             const isSelected = selected === o.k;
@@ -4893,17 +4902,17 @@ function TabAttachments({ attachments, onUpload, onDelete }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="Attachments" icon={Paperclip}
         right={
-          <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <InfoTooltip width={300}>
+              Photos and documents attached to this incident — included in Print/Export (photos embed directly as pages; other file types are listed by name). Limit {fmtBytes(MAX_ATTACHMENT_BYTES)} per file.
+            </InfoTooltip>
             <input ref={fileInputRef} type="file" multiple style={{ display: "none" }}
               onChange={e => { handleFiles(Array.from(e.target.files)); e.target.value = ""; }} />
             <Btn kind="subtle" icon={Plus} onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading ? "Uploading…" : "Add File"}
             </Btn>
-          </>
+          </div>
         }>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 12, lineHeight: 1.5 }}>
-          Photos and documents attached to this incident — included in Print/Export (photos embed directly as pages; other file types are listed by name). Limit {fmtBytes(MAX_ATTACHMENT_BYTES)} per file.
-        </div>
         {error && <div style={{ color: COLORS.dangerText, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
         {attachments.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No attachments yet.</div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
