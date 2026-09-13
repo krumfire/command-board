@@ -3194,22 +3194,26 @@ const US_STATE_ABBREVIATIONS = {
   "District of Columbia": "DC",
 };
 
-// YYYYMMDD, used to build the daily Texas KBDI drought-index map URL
-// below (Texas A&M Forest Service publishes it at a predictable,
-// date-stamped path each day, rather than a single always-current
-// URL) — matches the image's own local date, not UTC, since that's
-// what the filename itself is keyed to.
-function formatYYYYMMDD(date) {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function TabWeather() {
+function TabWeather({ scrollRequest }) {
   const [coords, setCoords] = useState(null); // { lat, lng }
   const [locationName, setLocationName] = useState(""); // e.g. "Denton, TX", from reverse geocoding
   const [locError, setLocError] = useState("");
   const [current, setCurrent] = useState(null);
   const [currentLoading, setCurrentLoading] = useState(false);
   const [currentError, setCurrentError] = useState("");
+
+  // Wraps each of the three sections below (Current Weather, Live
+  // Radar, KBDI) purely as scroll targets for the Weather tab's hover
+  // dropdown — Panel itself isn't ref-forwarding, so a plain wrapping
+  // div is what actually gets scrolled into view.
+  const currentSectionRef = useRef(null);
+  const radarSectionRef = useRef(null);
+  const kbdiSectionRef = useRef(null);
+  useEffect(() => {
+    if (!scrollRequest) return;
+    const refs = { current: currentSectionRef, radar: radarSectionRef, kbdi: kbdiSectionRef };
+    refs[scrollRequest.target]?.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [scrollRequest]);
 
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -3222,12 +3226,6 @@ function TabWeather() {
   useEffect(() => { radarIndexRef.current = radarIndex; }, [radarIndex]);
   const [radarPlaying, setRadarPlaying] = useState(false);
   const [radarError, setRadarError] = useState("");
-  // How many days back from today to try for the KBDI map — starts at
-  // 0 (today) and increments on a load failure, since the day's map
-  // may not be published yet (early morning) or a given day's run
-  // may simply be missing. Capped at 3 days back rather than
-  // retrying indefinitely against a source that's genuinely down.
-  const [kbdiDaysBack, setKbdiDaysBack] = useState(0);
   // Tracks whether the map instance actually exists yet — mapRef is a
   // ref precisely so mutating it doesn't trigger re-renders, but that
   // also means nothing re-runs the radar pre-load effect once the map
@@ -3457,6 +3455,7 @@ function TabWeather() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div ref={currentSectionRef}>
       <Panel title="Current Weather" icon={CloudSun} right={
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {locationName && <span style={{ fontSize: 13, color: COLORS.muted }}>{locationName}</span>}
@@ -3518,7 +3517,9 @@ function TabWeather() {
           );
         })()}
       </Panel>
+      </div>
 
+      <div ref={radarSectionRef}>
       <Panel title="Live Radar" icon={CloudSun} right={
         radarFrames.length > 0 && (
           <Btn kind={radarPlaying ? "solid" : "subtle"} icon={radarPlaying ? Pause : Play} onClick={() => setRadarPlaying(p => !p)} style={{ padding: "6px 11px", fontSize: 12.5 }}>
@@ -3538,36 +3539,30 @@ function TabWeather() {
           </div>
         )}
       </Panel>
+      </div>
 
-      {(() => {
-        const kbdiDate = new Date();
-        kbdiDate.setDate(kbdiDate.getDate() - kbdiDaysBack);
-        const kbdiDateStr = formatYYYYMMDD(kbdiDate);
-        const kbdiUrl = `https://twc.tamu.edu/weather_images/k/k${kbdiDateStr}.png`;
-        const kbdiTooStale = kbdiDaysBack >= 4; // stopped retrying further back — genuinely down rather than just not-yet-published
-        return (
-          <Panel title="Texas KBDI Drought Index" icon={AlertTriangle}>
-            <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
-              The Keetch-Byram Drought Index measures soil/fuel moisture depletion on a 0–800 scale (0 = saturated, 800 = extreme drought) — higher values mean drier fuels and greater wildfire potential. Published daily by Texas A&M Forest Service.
-              {kbdiTooStale && <span style={{ color: COLORS.dangerText, display: "block", marginTop: 4 }}>Couldn't load a recent map — the source may be temporarily unavailable.</span>}
-              {!kbdiTooStale && kbdiDaysBack > 0 && <span style={{ display: "block", marginTop: 4 }}>Today's map isn't published yet — showing {kbdiDaysBack === 1 ? "yesterday's" : `${kbdiDaysBack} days ago's`} instead.</span>}
-            </div>
-            {!kbdiTooStale && (
-              <img
-                key={kbdiDateStr}
-                src={kbdiUrl}
-                alt={`Texas KBDI drought index map for ${kbdiDate.toLocaleDateString()}`}
-                onError={() => setKbdiDaysBack(d => d + 1)}
-                style={{ width: "100%", maxWidth: 700, display: "block", margin: "0 auto", borderRadius: 6, border: `1px solid ${COLORS.line}` }}
-              />
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 8 }}>
-              <span style={{ fontSize: 11, color: COLORS.faint }}>Source: Texas Weather Connection (Texas A&M Forest Service) — {kbdiDate.toLocaleDateString()}</span>
-              <a href="http://twcgis.tamu.edu/KBDI/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: COLORS.amber }}>Interactive county map →</a>
-            </div>
-          </Panel>
-        );
-      })()}
+      <div ref={kbdiSectionRef}>
+      <Panel title="Texas KBDI Drought Index" icon={AlertTriangle}>
+        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
+          The Keetch-Byram Drought Index measures soil/fuel moisture depletion on a 0–800 scale (0 = saturated, 800 = extreme drought) — higher values mean drier fuels and greater wildfire potential. Interactive county-level map from Texas A&M Forest Service — pan and zoom to identify the mean, maximum, and minimum KBDI for a specific county.
+        </div>
+        {/* Embedded directly rather than just linked — this is Texas
+            A&M's own ArcGIS application, outside this app's control,
+            so if their site ever blocks iframe embedding this would
+            render blank. The "Open in new tab" link right below is
+            the fallback for that case, since there's no reliable way
+            to detect a same-origin-policy block from inside the page
+            that's doing the embedding. */}
+        <iframe
+          src="https://twcgis.tamu.edu/KBDI/"
+          title="Texas KBDI Interactive County Map"
+          style={{ width: "100%", height: "60vh", minHeight: 380, borderRadius: 6, border: `1px solid ${COLORS.line}` }}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+          <a href="https://twcgis.tamu.edu/KBDI/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: COLORS.amber }}>Open in new tab ↗</a>
+        </div>
+      </Panel>
+      </div>
     </div>
   );
 }
@@ -7126,6 +7121,13 @@ function AppInner({ onLock, theme, toggleTheme }) {
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showWeatherDropdown, setShowWeatherDropdown] = useState(false);
+  // { target: "current" | "radar" | "kbdi", nonce } — a fresh nonce on
+  // every click (even re-clicking the same section) is what makes
+  // TabWeather's effect re-fire each time, since a plain repeated
+  // string wouldn't register as a change and the page wouldn't
+  // re-scroll on a second click to the same spot.
+  const [weatherScrollRequest, setWeatherScrollRequest] = useState(null);
   const [showManageIncidentTypes, setShowManageIncidentTypes] = useState(false);
   // Lifted up from TabResources (rather than local state there) since
   // this now also needs to be reachable from the Admin menu, which is
@@ -8097,15 +8099,44 @@ function AppInner({ onLock, theme, toggleTheme }) {
           {/* TAB NAV */}
           <div style={{ display: "flex", gap: 2, padding: "0 16px", overflowX: "auto" }}>
             {TABS.map(t => (
-              <button key={t.k} onClick={() => setTab(t.k)} style={{
-                display: "flex", alignItems: "center", gap: 7, padding: "10px 14px",
-                background: "transparent", border: "none", cursor: "pointer",
-                color: tab === t.k ? COLORS.text : COLORS.muted,
-                borderBottom: tab === t.k ? `2px solid ${COLORS.red}` : `2px solid transparent`,
-                fontSize: 13, fontWeight: 600, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "nowrap",
-              }}>
-                <t.icon size={14} /> {t.label}
-              </button>
+              <div key={t.k} style={{ position: "relative" }}
+                onMouseEnter={() => t.k === "weather" && setShowWeatherDropdown(true)}
+                onMouseLeave={() => t.k === "weather" && setShowWeatherDropdown(false)}>
+                <button onClick={() => setTab(t.k)} style={{
+                  display: "flex", alignItems: "center", gap: 7, padding: "10px 14px",
+                  background: "transparent", border: "none", cursor: "pointer",
+                  color: tab === t.k ? COLORS.text : COLORS.muted,
+                  borderBottom: tab === t.k ? `2px solid ${COLORS.red}` : `2px solid transparent`,
+                  fontSize: 13, fontWeight: 600, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "nowrap",
+                }}>
+                  <t.icon size={14} /> {t.label}
+                </button>
+                {/* Hover dropdown, Weather tab only — jumps straight to
+                    a section further down the tab rather than making
+                    someone scroll past the (often tall) Live Radar map
+                    just to reach KBDI below it. */}
+                {t.k === "weather" && showWeatherDropdown && (
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, zIndex: 60, minWidth: 170,
+                    background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 4, display: "flex", flexDirection: "column", gap: 1,
+                  }}>
+                    {[
+                      { target: "current", label: "Current Weather" },
+                      { target: "radar", label: "Live Radar" },
+                      { target: "kbdi", label: "KBDI" },
+                    ].map(opt => (
+                      <button key={opt.target}
+                        onClick={() => { setTab("weather"); setShowWeatherDropdown(false); setWeatherScrollRequest({ target: opt.target, nonce: Date.now() }); }}
+                        style={{ background: "transparent", border: "none", color: COLORS.text, cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 4, fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif" }}
+                        onMouseEnter={e => e.currentTarget.style.background = COLORS.panel2}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -8131,7 +8162,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
                 onTriggerMayday={() => setShowMaydayConfirm(true)} onStartPar={startPar}
               />}
               {tab === "mapping" && <TabMapping mapData={mapData} setMapData={setMapData} resources={resources} assignmentPresets={presets.assignments} resourceColumnOrder={resourceColumnOrder} />}
-              {tab === "weather" && <TabWeather />}
+              {tab === "weather" && <TabWeather scrollRequest={weatherScrollRequest} />}
               {tab === "org" && <TabOrg org={org} setOrg={setOrg} resources={resources} assignmentPresets={presets.assignments} resourceColumnOrder={resourceColumnOrder} departments={presets.departments} />}
               {tab === "rehab" && <TabRehab rehab={rehab} setRehab={setRehab} resources={resources} now={effectiveNow} />}
               {tab === "icsforms" && (
