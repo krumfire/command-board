@@ -3458,12 +3458,6 @@ function TabWeather() {
           // concern and the figure doesn't mean much.
           const showHeatIndex = temp >= 80;
           const heatIndex = showHeatIndex ? calculateHeatIndex(temp, rh) : null;
-          // Open-Meteo's own "feels like" already blends in heat
-          // index-like effects for hot conditions — if the two are
-          // within a couple degrees of each other, showing a
-          // separate Heat Index number would just be repeating the
-          // same figure twice under different names.
-          const heatIndexDiffersFromFeelsLike = heatIndex != null && Math.abs(heatIndex - feelsLike) >= 2;
           return (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 14 }}>
@@ -3484,7 +3478,12 @@ function TabWeather() {
                   <div style={{ fontSize: 11, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Conditions</div>
                   <div style={{ fontSize: 16, marginTop: 4 }}>{weatherCodeDescription(current.weather_code)}</div>
                 </div>
-                {heatIndexDiffersFromFeelsLike && (
+                {/* Always shown once calculated (temp >= 80°F) rather
+                    than only when it meaningfully differs from "Feels
+                    Like" — even when the two land close together,
+                    showing both consistently was preferred over
+                    conditionally hiding one of them. */}
+                {showHeatIndex && (
                   <div>
                     <div style={{ fontSize: 11, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Heat Index</div>
                     <div style={{ fontSize: 26, fontFamily: "'Oswald', sans-serif", color: heatIndexCategory(heatIndex).color }}>{Math.round(heatIndex)}°F</div>
