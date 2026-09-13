@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Radio, Truck, HeartPulse, ClipboardList, Users, Save,
   Printer, Plus, X, Clock, ChevronRight, Trash2, Download,
@@ -7121,7 +7122,28 @@ function AppInner({ onLock, theme, toggleTheme }) {
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
-  const [showWeatherDropdown, setShowWeatherDropdown] = useState(false);
+  // Holds { top, left } once open — computed from the Weather tab's
+  // own bounding rect, since the dropdown renders via a portal
+  // straight into document.body (see below) rather than as a normal
+  // child, so it can't rely on CSS position:absolute against a
+  // parent for placement.
+  const [weatherDropdownPos, setWeatherDropdownPos] = useState(null);
+  const weatherTabRef = useRef(null);
+  // The dropdown itself renders via a portal (see below), so it's a
+  // separate DOM subtree from the tab button — moving the mouse
+  // between them would otherwise trigger the tab's onMouseLeave
+  // before the dropdown's onMouseEnter ever fires, closing it
+  // instantly. A short cancellable delay lets the mouse actually
+  // reach the dropdown before a close takes effect.
+  const weatherCloseTimeoutRef = useRef(null);
+  const openWeatherDropdown = () => {
+    if (weatherCloseTimeoutRef.current) { clearTimeout(weatherCloseTimeoutRef.current); weatherCloseTimeoutRef.current = null; }
+    const rect = weatherTabRef.current?.getBoundingClientRect();
+    if (rect) setWeatherDropdownPos({ top: rect.bottom, left: rect.left });
+  };
+  const scheduleCloseWeatherDropdown = () => {
+    weatherCloseTimeoutRef.current = setTimeout(() => setWeatherDropdownPos(null), 150);
+  };
   // { target: "current" | "radar" | "kbdi", nonce } — a fresh nonce on
   // every click (even re-clicking the same section) is what makes
   // TabWeather's effect re-fire each time, since a plain repeated
@@ -8100,8 +8122,9 @@ function AppInner({ onLock, theme, toggleTheme }) {
           <div style={{ display: "flex", gap: 2, padding: "0 16px", overflowX: "auto" }}>
             {TABS.map(t => (
               <div key={t.k} style={{ position: "relative" }}
-                onMouseEnter={() => t.k === "weather" && setShowWeatherDropdown(true)}
-                onMouseLeave={() => t.k === "weather" && setShowWeatherDropdown(false)}>
+                ref={t.k === "weather" ? weatherTabRef : undefined}
+                onMouseEnter={() => t.k === "weather" && openWeatherDropdown()}
+                onMouseLeave={() => t.k === "weather" && scheduleCloseWeatherDropdown()}>
                 <button onClick={() => setTab(t.k)} style={{
                   display: "flex", alignItems: "center", gap: 7, padding: "10px 14px",
                   background: "transparent", border: "none", cursor: "pointer",
@@ -8111,34 +8134,46 @@ function AppInner({ onLock, theme, toggleTheme }) {
                 }}>
                   <t.icon size={14} /> {t.label}
                 </button>
-                {/* Hover dropdown, Weather tab only — jumps straight to
-                    a section further down the tab rather than making
-                    someone scroll past the (often tall) Live Radar map
-                    just to reach KBDI below it. */}
-                {t.k === "weather" && showWeatherDropdown && (
-                  <div style={{
-                    position: "absolute", top: "100%", left: 0, zIndex: 60, minWidth: 170,
-                    background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 4, display: "flex", flexDirection: "column", gap: 1,
-                  }}>
-                    {[
-                      { target: "current", label: "Current Weather" },
-                      { target: "radar", label: "Live Radar" },
-                      { target: "kbdi", label: "KBDI" },
-                    ].map(opt => (
-                      <button key={opt.target}
-                        onClick={() => { setTab("weather"); setShowWeatherDropdown(false); setWeatherScrollRequest({ target: opt.target, nonce: Date.now() }); }}
-                        style={{ background: "transparent", border: "none", color: COLORS.text, cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 4, fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif" }}
-                        onMouseEnter={e => e.currentTarget.style.background = COLORS.panel2}
-                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
           </div>
+          {/* Hover dropdown, Weather tab only — jumps straight to a
+              section further down the tab rather than making someone
+              scroll past the (often tall) Live Radar map just to
+              reach KBDI below it. Rendered via a portal straight into
+              document.body (positioned from the tab's own measured
+              bounding rect) rather than as a normal absolutely-
+              positioned child, because the tab nav row above has
+              overflowX: "auto" for horizontal scrolling on narrow
+              screens — and per the CSS spec, setting overflow on one
+              axis forces the other axis to clip too, so a
+              position:absolute child anchored inside that row would
+              get silently clipped and never actually appear. */}
+          {weatherDropdownPos && createPortal(
+            <div
+              onMouseEnter={openWeatherDropdown}
+              onMouseLeave={scheduleCloseWeatherDropdown}
+              style={{
+                position: "fixed", top: weatherDropdownPos.top, left: weatherDropdownPos.left, zIndex: 200, minWidth: 170,
+                background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 4, display: "flex", flexDirection: "column", gap: 1,
+              }}>
+              {[
+                { target: "current", label: "Current Weather" },
+                { target: "radar", label: "Live Radar" },
+                { target: "kbdi", label: "KBDI" },
+              ].map(opt => (
+                <button key={opt.target}
+                  onClick={() => { setTab("weather"); setWeatherDropdownPos(null); setWeatherScrollRequest({ target: opt.target, nonce: Date.now() }); }}
+                  style={{ background: "transparent", border: "none", color: COLORS.text, cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 4, fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif" }}
+                  onMouseEnter={e => e.currentTarget.style.background = COLORS.panel2}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>,
+            document.body
+          )}
         </div>
 
         {/* MAIN */}
