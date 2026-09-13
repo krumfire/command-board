@@ -2611,13 +2611,17 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
     const streets = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
-    }).addTo(map);
+    });
     // Esri World Imagery — free, no API key, no account required for
     // reasonable-volume use like a single department's internal tool.
+    // Default base layer (added to the map on creation) rather than
+    // street tiles, since satellite imagery is generally more useful
+    // for fire/incident work — terrain, structures, and vegetation
+    // are visible in a way street tiles don't show at all.
     const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
       attribution: "Tiles &copy; Esri",
       maxZoom: 19,
-    });
+    }).addTo(map);
     L.control.layers({ "Street (OpenStreetMap)": streets, "Satellite (Esri)": satellite }, null, { position: "topright" }).addTo(map);
 
     // The FeatureGroup leaflet-draw edits/deletes shapes within, and
