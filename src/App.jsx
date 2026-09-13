@@ -7117,6 +7117,26 @@ function AppInner({ onLock, theme, toggleTheme }) {
   const online = useOnlineStatus();
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState("201");
+  // Set right before a tab change that's paired with a scroll-to-a-
+  // specific-section request (the Weather dropdown below) — lets that
+  // section-scroll effect run without this scroll-to-top effect
+  // immediately undoing it. Only ever set when tab is actually about
+  // to change, so it's always consumed by the effect below rather
+  // than lingering stale and silently skipping a later, unrelated
+  // tab switch's scroll-to-top.
+  const skipNextScrollTopRef = useRef(false);
+  useEffect(() => {
+    if (skipNextScrollTopRef.current) {
+      skipNextScrollTopRef.current = false;
+      return;
+    }
+    // Instant, not smooth — a tab switch swaps the whole panel
+    // instantly too, so an animated scroll would feel like it's
+    // lagging behind content that's already changed. Without this,
+    // switching tabs while scrolled down on the previous one leaves
+    // the header and the new tab's own top out of view.
+    window.scrollTo(0, 0);
+  }, [tab]);
   const [showLib, setShowLib] = useState(false);
   const [showChangePin, setShowChangePin] = useState(false);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
@@ -8164,7 +8184,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
                 { target: "kbdi", label: "KBDI" },
               ].map(opt => (
                 <button key={opt.target}
-                  onClick={() => { setTab("weather"); setWeatherDropdownPos(null); setWeatherScrollRequest({ target: opt.target, nonce: Date.now() }); }}
+                  onClick={() => { if (tab !== "weather") skipNextScrollTopRef.current = true; setTab("weather"); setWeatherDropdownPos(null); setWeatherScrollRequest({ target: opt.target, nonce: Date.now() }); }}
                   style={{ background: "transparent", border: "none", color: COLORS.text, cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 4, fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif" }}
                   onMouseEnter={e => e.currentTarget.style.background = COLORS.panel2}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
