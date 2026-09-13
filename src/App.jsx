@@ -3194,6 +3194,15 @@ const US_STATE_ABBREVIATIONS = {
   "District of Columbia": "DC",
 };
 
+// YYYYMMDD, used to build the daily Texas KBDI drought-index map URL
+// below (Texas A&M Forest Service publishes it at a predictable,
+// date-stamped path each day, rather than a single always-current
+// URL) — matches the image's own local date, not UTC, since that's
+// what the filename itself is keyed to.
+function formatYYYYMMDD(date) {
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function TabWeather() {
   const [coords, setCoords] = useState(null); // { lat, lng }
   const [locationName, setLocationName] = useState(""); // e.g. "Denton, TX", from reverse geocoding
@@ -3213,6 +3222,12 @@ function TabWeather() {
   useEffect(() => { radarIndexRef.current = radarIndex; }, [radarIndex]);
   const [radarPlaying, setRadarPlaying] = useState(false);
   const [radarError, setRadarError] = useState("");
+  // How many days back from today to try for the KBDI map — starts at
+  // 0 (today) and increments on a load failure, since the day's map
+  // may not be published yet (early morning) or a given day's run
+  // may simply be missing. Capped at 3 days back rather than
+  // retrying indefinitely against a source that's genuinely down.
+  const [kbdiDaysBack, setKbdiDaysBack] = useState(0);
   // Tracks whether the map instance actually exists yet — mapRef is a
   // ref precisely so mutating it doesn't trigger re-renders, but that
   // also means nothing re-runs the radar pre-load effect once the map
@@ -3523,6 +3538,36 @@ function TabWeather() {
           </div>
         )}
       </Panel>
+
+      {(() => {
+        const kbdiDate = new Date();
+        kbdiDate.setDate(kbdiDate.getDate() - kbdiDaysBack);
+        const kbdiDateStr = formatYYYYMMDD(kbdiDate);
+        const kbdiUrl = `https://twc.tamu.edu/weather_images/k/k${kbdiDateStr}.png`;
+        const kbdiTooStale = kbdiDaysBack >= 4; // stopped retrying further back — genuinely down rather than just not-yet-published
+        return (
+          <Panel title="Texas KBDI Drought Index" icon={AlertTriangle}>
+            <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
+              The Keetch-Byram Drought Index measures soil/fuel moisture depletion on a 0–800 scale (0 = saturated, 800 = extreme drought) — higher values mean drier fuels and greater wildfire potential. Published daily by Texas A&M Forest Service.
+              {kbdiTooStale && <span style={{ color: COLORS.dangerText, display: "block", marginTop: 4 }}>Couldn't load a recent map — the source may be temporarily unavailable.</span>}
+              {!kbdiTooStale && kbdiDaysBack > 0 && <span style={{ display: "block", marginTop: 4 }}>Today's map isn't published yet — showing {kbdiDaysBack === 1 ? "yesterday's" : `${kbdiDaysBack} days ago's`} instead.</span>}
+            </div>
+            {!kbdiTooStale && (
+              <img
+                key={kbdiDateStr}
+                src={kbdiUrl}
+                alt={`Texas KBDI drought index map for ${kbdiDate.toLocaleDateString()}`}
+                onError={() => setKbdiDaysBack(d => d + 1)}
+                style={{ width: "100%", maxWidth: 700, display: "block", margin: "0 auto", borderRadius: 6, border: `1px solid ${COLORS.line}` }}
+              />
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 8 }}>
+              <span style={{ fontSize: 11, color: COLORS.faint }}>Source: Texas Weather Connection (Texas A&M Forest Service) — {kbdiDate.toLocaleDateString()}</span>
+              <a href="http://twcgis.tamu.edu/KBDI/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, color: COLORS.amber }}>Interactive county map →</a>
+            </div>
+          </Panel>
+        );
+      })()}
     </div>
   );
 }
