@@ -5,7 +5,7 @@ import {
   Printer, Plus, X, Clock, ChevronRight, Trash2, Download,
   FolderOpen, AlertTriangle, Shield, CheckCircle2, ArrowRightLeft, Lock, GripVertical, GripHorizontal,
   Archive, RotateCcw, Layers, Star, Paperclip, FileText, Image as ImageIcon, KeyRound, Settings, Sun, Moon,
-  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu
+  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info
 } from "lucide-react";
 import {
   loadIndex, saveIndex, loadIncidentBlobFresh, saveIncidentBlob,
@@ -884,6 +884,34 @@ function Btn({ children, onClick, kind = "ghost", icon: Icon, style, type = "but
     <button type={type} disabled={disabled} onClick={onClick} title={title} style={{ ...base, ...kinds[kind], ...style }}>
       {Icon && <Icon size={14} />}{children}
     </button>
+  );
+}
+
+// A small (?) icon that reveals a text block on hover, for moving
+// longer explanatory copy out of a panel's visible body — into an
+// on-demand popup instead — without losing the explanation entirely.
+// No portal needed here (unlike the Weather tab's dropdown): nothing
+// in the areas this is used clips overflow the way that dropdown's
+// scrolling tab-nav parent did, so a plain absolutely-positioned
+// popup is enough.
+function InfoTooltip({ children, width = 320 }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex", verticalAlign: "middle" }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}>
+      <Info size={14} color={COLORS.muted} style={{ cursor: "help" }} />
+      {show && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, marginTop: 6, zIndex: 100, width, maxWidth: "80vw",
+          background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 6,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.35)", padding: 10, fontSize: 11.5, color: COLORS.muted,
+          lineHeight: 1.5, fontWeight: 400, textTransform: "none", letterSpacing: "normal", whiteSpace: "normal",
+        }}>
+          {children}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -2942,7 +2970,10 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="Mapping" icon={MapIcon} right={
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <InfoTooltip width={360}>
+            Use the shape tools (top-left) to mark the fire perimeter, hazard zones, staging areas, or points of interest, or use <strong>Add Text Label</strong> / <strong>Freehand Draw</strong> above to type a note or sketch with a finger or Apple Pencil — draw a closed loop and it's treated as a perimeter with its acreage calculated automatically, same as GPS tracing below. Drag any shape or label to reposition it — all saved automatically and shared across the board. Use <strong>Trace GPS Perimeter</strong> and walk or drive the fire's boundary — stopping the trace closes it into a shape and calculates the enclosed acreage, shown on the map and included in Print/Export. While Text Label or Freehand Draw is armed, the map itself won't pan (tap the button again to release it). Switch between street and satellite view from the layer control (top-right).
+          </InfoTooltip>
           <Btn kind={activeTool === "text" ? "solid" : "subtle"} onClick={() => setActiveTool(t => t === "text" ? null : "text")} style={{ padding: "6px 11px", fontSize: 12.5 }}>
             {activeTool === "text" ? "Tap Map to Place Text" : "Add Text Label"}
           </Btn>
@@ -2957,11 +2988,12 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
           </Btn>
         </div>
       }>
-        <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 10, lineHeight: 1.5 }}>
-          Use the shape tools (top-left) to mark the fire perimeter, hazard zones, staging areas, or points of interest, or use <strong>Add Text Label</strong> / <strong>Freehand Draw</strong> above to type a note or sketch with a finger or Apple Pencil — draw a closed loop and it's treated as a perimeter with its acreage calculated automatically, same as GPS tracing below. Drag any shape or label to reposition it — all saved automatically and shared across the board. Use <strong>Trace GPS Perimeter</strong> and walk or drive the fire's boundary — stopping the trace closes it into a shape and calculates the enclosed acreage, shown on the map and included in Print/Export. While Text Label or Freehand Draw is armed, the map itself won't pan (tap the button again to release it). Switch between street and satellite view from the layer control (top-right).
-          {gpsError && <span style={{ color: COLORS.dangerText, display: "block", marginTop: 4 }}>{gpsError}</span>}
-          {perimeterMessage && <span style={{ color: COLORS.amber, display: "block", marginTop: 4 }}>{perimeterMessage}</span>}
-        </div>
+        {(gpsError || perimeterMessage) && (
+          <div style={{ fontSize: 11.5, marginBottom: 10, lineHeight: 1.5 }}>
+            {gpsError && <span style={{ color: COLORS.dangerText, display: "block" }}>{gpsError}</span>}
+            {perimeterMessage && <span style={{ color: COLORS.amber, display: "block" }}>{perimeterMessage}</span>}
+          </div>
+        )}
         {(() => {
           // Staging and Rehab are real physical locations worth
           // marking on a map, unlike Out of Service or Released,
@@ -2972,8 +3004,11 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
           if (activeDivisions.length === 0) return null;
           return (
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10.5, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                Drag a division onto the map to mark where it's operating
+              <div style={{ fontSize: 10.5, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+                Divisions
+                <InfoTooltip width={220}>
+                  Drag a division onto the map to mark where it's operating
+                </InfoTooltip>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {activeDivisions.map(name => {
