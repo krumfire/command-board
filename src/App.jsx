@@ -7301,6 +7301,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
   const [showParSettings, setShowParSettings] = useState(false);
   const [showManageResourcesAuth, setShowManageResourcesAuth] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [showArchiveAuth, setShowArchiveAuth] = useState(false);
   const [showChangeArchivePassword, setShowChangeArchivePassword] = useState(false);
   const [presets, setPresets] = useState({ departments: [], objectives: [], assignments: [], resourceKinds: [], incidentTypes: [], objectivesByType: {}, assignmentsByType: {}, tasksByType: {}, tasks: [], parIntervalMinutes: 15 });
   const [formsUsed, setFormsUsed] = useState({});
@@ -8373,7 +8374,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
 
       {ready && (showLib || !incidentLoaded) && (
         <LibraryModal index={index} onClose={() => setShowLib(false)} onLoad={openIncident} onNew={startNew} onDelete={deleteIncident}
-          onArchive={archiveIncident} onOpenArchive={() => setShowArchive(true)} onOpenAdmin={() => setShowAdminAuth(true)} onLock={onLock} mandatory={!incidentLoaded} />
+          onArchive={archiveIncident} onOpenArchive={() => setShowArchiveAuth(true)} onOpenAdmin={() => setShowAdminAuth(true)} onLock={onLock} mandatory={!incidentLoaded} />
       )}
 
       {showAdminAuth && (
@@ -8382,6 +8383,14 @@ function AppInner({ onLock, theme, toggleTheme }) {
           message="Enter the admin password to access admin settings."
           onConfirm={() => { setShowAdminAuth(false); setShowAdminMenu(true); }}
           onCancel={() => setShowAdminAuth(false)}
+        />
+      )}
+      {showArchiveAuth && (
+        <PasswordConfirmModal
+          title="Admin Password Required"
+          message="Enter the admin password to view archived incidents."
+          onConfirm={() => { setShowArchiveAuth(false); setShowArchive(true); }}
+          onCancel={() => setShowArchiveAuth(false)}
         />
       )}
       {showMaydayConfirm && (
