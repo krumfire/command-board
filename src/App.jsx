@@ -4872,9 +4872,31 @@ function TabICSForms(props) {
   );
 }
 
-const MAX_ATTACHMENT_BYTES = 700 * 1024; // ~700KB raw — base64 inflates
-// this ~33%, keeping each attachment document safely under Firestore's
-// 1MB-per-document cap with room for metadata overhead.
+// Cloudinary is used for attachment file storage instead of storing
+// files inline in Firestore — Firestore documents are hard-capped at
+// 1MB, which made base64-inline storage only practical up to ~700KB
+// per file. Cloudinary's free plan supports uploads up to 10MB with
+// no billing account required, unlike Firebase Storage (which
+// requires the paid Blaze plan as of Feb 2026). This uses an
+// "unsigned upload preset" — the standard way to upload directly from
+// a browser with no backend server and no secret key exposed in the
+// client code. Both values below are safe to keep in client-side
+// code (that's the whole point of an unsigned preset); the API
+// secret, which is NOT safe to expose client-side, is never used here.
+//
+// SETUP (one-time, in the Cloudinary dashboard):
+//   1. Create a free account at cloudinary.com — no credit card needed.
+//   2. Your "Cloud Name" is shown on the dashboard home page — paste
+//      it into CLOUDINARY_CLOUD_NAME below.
+//   3. Go to Settings -> Upload -> Upload presets -> Add upload preset.
+//      Set "Signing Mode" to "Unsigned", give it a name, and save.
+//      Paste that name into CLOUDINARY_UPLOAD_PRESET below.
+// Until both are filled in, uploads will fail with a clear error
+// telling you so (see uploadAttachmentFile below).
+const CLOUDINARY_CLOUD_NAME = "YOUR_CLOUD_NAME";
+const CLOUDINARY_UPLOAD_PRESET = "YOUR_UPLOAD_PRESET";
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB — Cloudinary's free-plan cap for images and non-image/video ("raw") files alike
 
 function fmtBytes(n) {
   if (n < 1024) return `${n} B`;
@@ -4882,23 +4904,39 @@ function fmtBytes(n) {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      resolve(result.slice(result.indexOf(",") + 1));
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+// Uploads directly from the browser to Cloudinary's CDN and returns
+// just the small bits of metadata worth keeping — the delivery URL
+// (secure_url) and the asset's own id (public_id, kept in case a
+// signed-deletion backend gets added later) — never the file itself,
+// which is why this keeps every attachment's Firestore document tiny
+// regardless of the original file's size.
+async function uploadAttachmentFile(file) {
+  if (CLOUDINARY_CLOUD_NAME === "YOUR_CLOUD_NAME" || CLOUDINARY_UPLOAD_PRESET === "YOUR_UPLOAD_PRESET") {
+    throw new Error("Attachment storage isn't configured yet — set CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET in App.jsx.");
+  }
+  const form = new FormData();
+  form.append("file", file);
+  form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  // "auto" lets Cloudinary route images/PDFs/etc. to the right handling
+  // automatically, rather than assuming every attachment is a photo.
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`, { method: "POST", body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error?.message || `Upload failed (${res.status}).`);
+  }
+  const json = await res.json();
+  return { url: json.secure_url, publicId: json.public_id };
 }
 
-function downloadAttachmentFile(a) {
-  const byteChars = atob(a.dataBase64);
-  const byteNumbers = new Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([new Uint8Array(byteNumbers)], { type: a.type || "application/octet-stream" });
+// Fetches the file from Cloudinary into a blob first, rather than
+// pointing the download link straight at the Cloudinary URL — browsers
+// generally ignore the `download` attribute on cross-origin links and
+// just navigate to/open the file instead of downloading it, so a
+// same-origin blob URL is what actually makes "Download" behave like
+// a download rather than opening a new tab.
+async function downloadAttachmentFile(a) {
+  const res = await fetch(a.url);
+  const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -4924,8 +4962,8 @@ function TabAttachments({ attachments, onUpload, onDelete }) {
       setUploading(true);
       try {
         await onUpload(file);
-      } catch {
-        setError(`Failed to upload "${file.name}".`);
+      } catch (err) {
+        setError(err?.message || `Failed to upload "${file.name}".`);
       }
       setUploading(false);
     }
@@ -4954,7 +4992,7 @@ function TabAttachments({ attachments, onUpload, onDelete }) {
             return (
               <div key={a.id} style={{ background: COLORS.panel2, border: `1px solid ${COLORS.line}`, borderRadius: 6, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
                 {isImage ? (
-                  <img src={`data:${a.type};base64,${a.dataBase64}`} alt={a.name} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 4 }} />
+                  <img src={a.url} alt={a.name} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 4 }} />
                 ) : (
                   <div style={{ width: "100%", height: 100, display: "flex", alignItems: "center", justifyContent: "center", background: COLORS.panel, borderRadius: 4 }}>
                     <FileText size={32} color={COLORS.muted} />
@@ -4963,7 +5001,7 @@ function TabAttachments({ attachments, onUpload, onDelete }) {
                 <div style={{ fontSize: 12, fontWeight: 600, wordBreak: "break-word" }}>{a.name}</div>
                 <div style={{ fontSize: 10.5, color: COLORS.muted }}>{fmtBytes(a.size || 0)} · {fmtDate(a.uploadedAt)}</div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <Btn kind="subtle" onClick={() => downloadAttachmentFile(a)} style={{ flex: 1, justifyContent: "center", padding: "5px 8px", fontSize: 11.5 }}>Download</Btn>
+                  <Btn kind="subtle" onClick={() => downloadAttachmentFile(a).catch(() => setError(`Couldn't download "${a.name}" — check your connection and try again.`))} style={{ flex: 1, justifyContent: "center", padding: "5px 8px", fontSize: 11.5 }}>Download</Btn>
                   <button onClick={() => onDelete(a.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer" }}><Trash2 size={14} /></button>
                 </div>
               </div>
@@ -6271,6 +6309,14 @@ function loadLogoRGB(dataUri, maxDim = 130) {
   return new Promise((resolve) => {
     try {
       const img = new Image();
+      // Needed for the canvas readback below (getImageData) to work
+      // on a cross-origin URL like a Cloudinary attachment — without
+      // it the canvas is "tainted" and getImageData throws, even
+      // though Cloudinary's own CORS headers already allow this.
+      // Harmless for this function's other callers (the KFD logo, org
+      // chart, and map snapshot), which all pass locally-generated
+      // data: URIs that CORS doesn't apply to at all.
+      img.crossOrigin = "anonymous";
       img.onload = () => {
         const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         const w = Math.max(1, Math.round(img.width * scale));
@@ -6369,7 +6415,7 @@ async function downloadPacketPdf(data) {
   const mapSnapshotDataUri = await renderMapSnapshotDataUri(parseMapData(data.mapData), data.resources, data.assignmentPresets, data.resourceColumnOrder);
   const mapSnapshotImage = mapSnapshotDataUri ? await loadLogoRGB(mapSnapshotDataUri, 1400) : null;
   for (const a of imageAttachments) {
-    const decoded = await loadLogoRGB(`data:${a.type};base64,${a.dataBase64}`, 1000);
+    const decoded = await loadLogoRGB(a.url, 1000);
     if (decoded) attachmentImages.push({ ...decoded, caption: a.name });
   }
   const parts = buildSimplePdf(buildPacketLines({ ...data, orgChartImage, mapSnapshotImage, mapData: parseMapData(data.mapData) }), logo, { name: inc.name, started }, attachmentImages);
@@ -8105,12 +8151,20 @@ function AppInner({ onLock, theme, toggleTheme }) {
     setShowLib(false);
   };
   const uploadAttachment = async (file) => {
-    const dataBase64 = await fileToBase64(file);
+    const { url, publicId } = await uploadAttachmentFile(file);
     const attId = uid();
-    const data = { name: file.name, type: file.type, size: file.size, dataBase64, uploadedAt: nowISO() };
+    const data = { name: file.name, type: file.type, size: file.size, url, publicId, uploadedAt: nowISO() };
     await saveAttachment(incident.id, attId, data);
     setAttachments(prev => [...prev, { id: attId, ...data }]);
   };
+  // Only removes the Firestore metadata record — the actual file on
+  // Cloudinary is NOT deleted. Cloudinary's deletion API always
+  // requires a signed request (its API secret, which can't safely
+  // live in this app's client-side code), so an unsigned-upload-only
+  // setup like this one has no way to delete the underlying file
+  // itself. The file becomes orphaned on Cloudinary, invisible from
+  // within the app but still counting against the account's storage
+  // quota until removed manually from the Cloudinary dashboard.
   const removeAttachment = async (attId) => {
     await deleteAttachment(incident.id, attId);
     setAttachments(prev => prev.filter(a => a.id !== attId));
