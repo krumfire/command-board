@@ -4893,8 +4893,8 @@ function TabICSForms(props) {
 //      Paste that name into CLOUDINARY_UPLOAD_PRESET below.
 // Until both are filled in, uploads will fail with a clear error
 // telling you so (see uploadAttachmentFile below).
-const CLOUDINARY_CLOUD_NAME = "YOUR_CLOUD_NAME";
-const CLOUDINARY_UPLOAD_PRESET = "YOUR_UPLOAD_PRESET";
+const CLOUDINARY_CLOUD_NAME = "haeoiomb";
+const CLOUDINARY_UPLOAD_PRESET = "CommandBoard";
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB — Cloudinary's free-plan cap for images and non-image/video ("raw") files alike
 
