@@ -132,8 +132,19 @@ export async function triggerMaydayAlert(incidentId) {
 export async function clearMaydayAlert(incidentId) {
   await setDoc(doc(db, "icMayday", incidentId), { active: false, startedAt: null, _serverWrite: serverTimestamp() });
 }
+// Skips any snapshot still coming from the local cache (metadata.fromCache)
+// rather than acting on it immediately — a fresh subscription (which
+// happens the instant an incident is opened) otherwise fires first with
+// whatever this device last had cached, before the real, current server
+// state arrives a moment later. If this device's cache ever held a stale
+// active:true from a past Mayday that was cleared while it was offline or
+// closed, that stale value would sound the alarm briefly on open before
+// correcting itself — this is exactly the false-alarm-on-open bug that
+// showed up in the field. Waiting for server confirmation means the
+// callback only ever fires with data actually known to be current.
 export function watchMaydayAlert(incidentId, onChange) {
   return onSnapshot(doc(db, "icMayday", incidentId), (snap) => {
+    if (snap.metadata.fromCache) return;
     onChange(snap.exists() ? snap.data() : { active: false, startedAt: null });
   });
 }

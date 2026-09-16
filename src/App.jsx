@@ -4893,8 +4893,8 @@ function TabICSForms(props) {
 //      Paste that name into CLOUDINARY_UPLOAD_PRESET below.
 // Until both are filled in, uploads will fail with a clear error
 // telling you so (see uploadAttachmentFile below).
-const CLOUDINARY_CLOUD_NAME = "haeoiomb";
-const CLOUDINARY_UPLOAD_PRESET = "CommandBoard";
+const CLOUDINARY_CLOUD_NAME = "YOUR_CLOUD_NAME";
+const CLOUDINARY_UPLOAD_PRESET = "YOUR_UPLOAD_PRESET";
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB — Cloudinary's free-plan cap for images and non-image/video ("raw") files alike
 
@@ -6997,8 +6997,17 @@ function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOp
           </div>
         )}
         <div style={{ padding: 16 }}>
-          <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 12, lineHeight: 1.5 }}>
-            {mandatory ? "Select an incident to open, or start a new one." : "Shared board — visible and editable by anyone who opens this app. Changes sync to other users within a few seconds."}
+          <div style={{ fontSize: 11.5, color: COLORS.muted, marginBottom: 12, lineHeight: 1.5, display: "flex", alignItems: "center", gap: 5 }}>
+            {mandatory ? (
+              "Select an incident to open, or start a new one."
+            ) : (
+              <>
+                Shared Board
+                <InfoTooltip width={280}>
+                  Visible and editable by anyone who opens this app. Changes sync to other users within a few seconds.
+                </InfoTooltip>
+              </>
+            )}
           </div>
           <Btn kind="solid" icon={Plus} onClick={() => setConfirmAction({ type: "new" })} style={{ marginBottom: 14, width: "100%", justifyContent: "center" }}>Start New Incident</Btn>
           {active.length === 0 && <div style={{ color: COLORS.faint, fontSize: 13 }}>No active incidents.</div>}
@@ -7687,6 +7696,15 @@ function AppInner({ onLock, theme, toggleTheme }) {
   const startMayday = () => {
     setIncident(prev => ({ ...prev, parSession: { type: "mayday", startedAt: nowISO(), checks: {} } }));
     setShowMaydayModal(true);
+    // Set directly and immediately on this device, rather than
+    // waiting on watchMaydayAlert's own round-trip to the server to
+    // reflect it back — that subscription now deliberately ignores
+    // its own locally-cached/optimistic snapshot (see the comment on
+    // watchMaydayAlert in store.js) to avoid a stale cached Mayday
+    // false-alarming on open, which would otherwise delay the
+    // triggering device's own alarm sound behind a network round-trip
+    // it shouldn't have to wait on.
+    setMaydayAlertActive(true);
     if (incident.id) triggerMaydayAlert(incident.id).catch(() => console.error("Mayday alert failed to reach other devices — check Firestore rules include icMayday."));
   };
   const startPar = () => {
@@ -7744,7 +7762,15 @@ function AppInner({ onLock, theme, toggleTheme }) {
     setIncident(prev => ({ ...prev, parSession: null, lastParAt: nowISO(), parHistory: [entry, ...prev.parHistory], parReminderActive: false }));
     setShowMaydayModal(false);
     setShowParModal(false);
-    if (mode === "mayday" && incident.id) clearMaydayAlert(incident.id).catch(() => console.error("Failed to clear the Mayday alert on other devices."));
+    if (mode === "mayday" && incident.id) {
+      // Same reasoning as startMayday's immediate, local
+      // setMaydayAlertActive(true) — stop the alarm sound on this
+      // device right away rather than leaving it playing behind the
+      // now-closed modal until watchMaydayAlert's server round-trip
+      // confirms the clear.
+      setMaydayAlertActive(false);
+      clearMaydayAlert(incident.id).catch(() => console.error("Failed to clear the Mayday alert on other devices."));
+    }
   };
   const closeParModal = () => {
     setShowMaydayModal(false);
