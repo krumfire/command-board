@@ -5,7 +5,7 @@ import {
   Printer, Plus, X, Clock, ChevronRight, Trash2, Download,
   FolderOpen, AlertTriangle, Shield, CheckCircle2, ArrowRightLeft, Lock, GripVertical, GripHorizontal,
   Archive, RotateCcw, Layers, Star, Paperclip, FileText, Image as ImageIcon, KeyRound, Settings, Sun, Moon,
-  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info
+  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info, Ruler
 } from "lucide-react";
 import {
   loadIndex, saveIndex, loadIncidentBlobFresh, saveIncidentBlob,
@@ -756,6 +756,23 @@ function getTotalPerimeterAcres(mapData) {
 // into the unit a US fire department actually reports perimeter size
 // in.
 const SQ_METERS_PER_ACRE = 4046.8564224;
+const FEET_PER_METER = 3.280839895;
+
+// Formats a distance in meters (as Leaflet's own distanceTo/measurement
+// utilities return) as feet, switching to miles past 1000 ft since a
+// long measured distance is more naturally read that way — matches how
+// the Mapping tab's other distance-facing text already reports units
+// (acres for area, never raw square meters).
+function fmtMeasureDistance(meters) {
+  const feet = meters * FEET_PER_METER;
+  if (feet >= 1000) return `${(feet / 5280).toFixed(2)} mi`;
+  return `${Math.round(feet).toLocaleString()} ft`;
+}
+function fmtMeasureArea(sqMeters) {
+  const acres = sqMeters / SQ_METERS_PER_ACRE;
+  if (acres >= 1) return `${acres.toFixed(2)} ac`;
+  return `${Math.round(sqMeters * FEET_PER_METER * FEET_PER_METER).toLocaleString()} sq ft`;
+}
 
 function makeTextIcon(text) {
   const esc = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -2448,6 +2465,19 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
   const perimeterTempLineRef = useRef(null); // the live, growing (not yet closed) trace line
   const perimeterMarkerRef = useRef(null); // live position dot while tracing
   const perimeterWatchIdRef = useRef(null);
+  // { points, layer } while the Measure tool has an in-progress
+  // line/shape on the map — a scratch measurement, never persisted to
+  // drawnItems/mapData the way the other tools' shapes are, since its
+  // whole purpose is a quick, disposable check rather than a lasting
+  // map marking.
+  const measureStateRef = useRef(null);
+  // Cleared whenever the tool is toggled off (including re-toggling it
+  // back on to start fresh) — the map itself never keeps a stale
+  // in-progress measurement layer lying around.
+  const clearMeasurement = () => {
+    if (measureStateRef.current && mapRef.current) mapRef.current.removeLayer(measureStateRef.current.layer);
+    measureStateRef.current = null;
+  };
   const [tracking, setTracking] = useState(false);
   const [gpsCoords, setGpsCoords] = useState(null); // { lat, lng, accuracy } while tracking, null otherwise
   const [gpsCoordsCopied, setGpsCoordsCopied] = useState(false);
@@ -2466,6 +2496,13 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
   useEffect(() => { latestAssignmentPresetsRef.current = assignmentPresets; }, [assignmentPresets]);
   useEffect(() => { latestResourceColumnOrderRef.current = resourceColumnOrder; }, [resourceColumnOrder]);
   useEffect(() => { textPromptOpenRef.current = !!textPrompt; }, [textPrompt]);
+  // Clears any in-progress measurement whenever the Measure tool isn't
+  // the active one — covers switching to a different tool mid-
+  // measurement (which would otherwise orphan the unfinished line on
+  // the map indefinitely) as well as Measure's own toggle-off.
+  useEffect(() => {
+    if (activeTool !== "measure") clearMeasurement();
+  }, [activeTool]);
 
   const startTracingPerimeter = () => {
     if (!navigator.geolocation) { setPerimeterMessage("This device/browser doesn't support GPS location."); return; }
@@ -2846,6 +2883,7 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
   // a library's own internal event handling isn't something that can
   // be fixed from the outside, so this replaces it entirely with the
   // same technique already proven here.
+
   const overlayToLatLng = (e) => {
     const rect = containerRef.current.getBoundingClientRect();
     return mapRef.current.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
@@ -2857,7 +2895,57 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
   // movement between press and release; that's true for any ordinary
   // DOM element and has nothing to do with Leaflet, since this
   // overlay is a plain div Leaflet doesn't know exists.
+  // Perimeter length is always shown; area is added once the shape
+  // closes (clicking back near the start point, same close-loop
+  // detection freehand sketches already use) — reusing the same
+  // percentage-of-size-with-a-floor threshold for consistency.
+  const addMeasurePoint = (latlng) => {
+    if (!mapRef.current) return;
+    if (!measureStateRef.current) {
+      const layer = L.polyline([latlng], { color: "#C4341F", weight: 3, dashArray: "6 4" }).addTo(mapRef.current);
+      layer.bindTooltip(fmtMeasureDistance(0), { permanent: true, direction: "right", className: "cb-perimeter-tooltip" });
+      measureStateRef.current = { points: [latlng], layer, closed: false };
+      return;
+    }
+    const state = measureStateRef.current;
+    if (state.closed) return; // already closed into an area — nothing more to add until cleared
+    const first = state.points[0];
+    const closureThreshold = state.points.length >= 3
+      ? Math.max(15, L.latLngBounds(state.points).getNorthEast().distanceTo(L.latLngBounds(state.points).getSouthWest()) * 0.15)
+      : 0;
+    if (state.points.length >= 3 && first.distanceTo(latlng) <= closureThreshold) {
+      // Close the loop: swap the polyline for a polygon so it renders
+      // filled, and show both perimeter length and enclosed area.
+      mapRef.current.removeLayer(state.layer);
+      const polygon = L.polygon(state.points, { color: "#C4341F", weight: 3, fillOpacity: 0.15 }).addTo(mapRef.current);
+      const perimeterMeters = state.points.reduce((sum, p, i) => i === 0 ? 0 : sum + state.points[i - 1].distanceTo(p), 0) + state.points[state.points.length - 1].distanceTo(first);
+      const areaSqMeters = L.GeometryUtil.geodesicArea(state.points);
+      polygon.bindTooltip(`${fmtMeasureDistance(perimeterMeters)} · ${fmtMeasureArea(areaSqMeters)}`, { permanent: true, direction: "center", className: "cb-perimeter-tooltip" });
+      measureStateRef.current = { points: state.points, layer: polygon, closed: true };
+      // Auto-releases the tool on a completed area measurement, same
+      // as confirmTextLabel does after a successful label placement —
+      // the measurement stays visible (and clears the next time
+      // Measure is toggled on) rather than leaving the tool armed and
+      // the map still not panning after the reading is already done.
+      setActiveTool(null);
+      return;
+    }
+    const points = [...state.points, latlng];
+    state.layer.setLatLngs(points);
+    const meters = points.reduce((sum, p, i) => i === 0 ? 0 : sum + points[i - 1].distanceTo(p), 0);
+    state.layer.setTooltipContent(fmtMeasureDistance(meters));
+    measureStateRef.current = { ...state, points };
+  };
+
   const handleOverlayClick = (e) => {
+    if (activeTool === "measure") {
+      try {
+        addMeasurePoint(overlayToLatLng(e));
+      } catch (err) {
+        console.error("Measurement point failed:", err);
+      }
+      return;
+    }
     if (activeTool !== "text") return;
     try {
       setTextPrompt({ latlng: overlayToLatLng(e), value: "" });
@@ -2963,6 +3051,12 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
     drawnItemsRef.current.addLayer(marker);
     makeLayerMovable(marker);
     persistRef.current();
+    // Releases the tool automatically after a successful placement,
+    // rather than leaving it armed (and the map still not panning —
+    // see the info tooltip above) until manually tapped off. Left out
+    // of the empty-text case above, so canceling out of an accidental
+    // open doesn't also un-arm a tool the user still meant to use.
+    setActiveTool(null);
   };
 
   const toggleTracking = () => {
@@ -3003,14 +3097,17 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="Mapping" icon={MapIcon} right={
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <InfoTooltip width={360}>
-            Use the shape tools (top-left) to mark the fire perimeter, hazard zones, staging areas, or points of interest, or use <strong>Add Text Label</strong> / <strong>Freehand Draw</strong> above to type a note or sketch with a finger or Apple Pencil — draw a closed loop and it's treated as a perimeter with its acreage calculated automatically, same as GPS tracing below. Drag any shape or label to reposition it — all saved automatically and shared across the board. Use <strong>Trace GPS Perimeter</strong> and walk or drive the fire's boundary — stopping the trace closes it into a shape and calculates the enclosed acreage, shown on the map and included in Print/Export. While Text Label or Freehand Draw is armed, the map itself won't pan (tap the button again to release it). Switch between street and satellite view from the layer control (top-right).
+          <InfoTooltip width={380}>
+            Use the shape tools (top-left) to mark the fire perimeter, hazard zones, staging areas, or points of interest, or use <strong>Add Text Label</strong> / <strong>Freehand Draw</strong> above to type a note or sketch with a finger or Apple Pencil — draw a closed loop and it's treated as a perimeter with its acreage calculated automatically, same as GPS tracing below. Drag any shape or label to reposition it — all saved automatically and shared across the board. Use <strong>Measure</strong> to click points and get a running linear-feet total, or click back near your first point to close it into a shape and see its enclosed area — this measurement isn't saved, just a quick on-the-spot check. Use <strong>Trace GPS Perimeter</strong> and walk or drive the fire's boundary — stopping the trace closes it into a shape and calculates the enclosed acreage, shown on the map and included in Print/Export. While Text Label, Freehand Draw, or Measure is armed, the map itself won't pan (tap the button again to release it). Switch between street and satellite view from the layer control (top-right).
           </InfoTooltip>
           <Btn kind={activeTool === "text" ? "solid" : "subtle"} onClick={() => setActiveTool(t => t === "text" ? null : "text")} style={{ padding: "6px 11px", fontSize: 12.5 }}>
             {activeTool === "text" ? "Tap Map to Place Text" : "Add Text Label"}
           </Btn>
           <Btn kind={activeTool === "freehand" ? "solid" : "subtle"} onClick={() => setActiveTool(t => t === "freehand" ? null : "freehand")} style={{ padding: "6px 11px", fontSize: 12.5 }}>
             {activeTool === "freehand" ? "Drawing… (tap to stop)" : "Freehand Draw"}
+          </Btn>
+          <Btn kind={activeTool === "measure" ? "solid" : "subtle"} icon={Ruler} onClick={() => setActiveTool(t => t === "measure" ? null : "measure")} style={{ padding: "6px 11px", fontSize: 12.5 }}>
+            {activeTool === "measure" ? "Tap Points to Measure" : "Measure"}
           </Btn>
           <Btn kind={tracking ? "solid" : "subtle"} icon={Crosshair} onClick={toggleTracking} style={{ padding: "6px 11px", fontSize: 12.5 }}>
             {tracking ? "Stop Location" : "Show My Location"}
@@ -3085,7 +3182,7 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
               {!gpsCoordsCopied && <span style={{ color: COLORS.muted, fontSize: 10.5 }}>±{Math.round(gpsCoords.accuracy)}m</span>}
             </div>
           )}
-          {(activeTool === "text" || activeTool === "freehand" || isMovingShape) && (
+          {(activeTool === "text" || activeTool === "freehand" || activeTool === "measure" || isMovingShape) && (
             <div
               onClick={handleOverlayClick}
               onPointerDown={handleOverlayPointerDown}
