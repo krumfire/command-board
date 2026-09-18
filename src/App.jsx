@@ -157,14 +157,24 @@ function deriveAssignmentColumns(resources, assignmentPresets, customOrder) {
   // holding areas that only exist while at least one resource is
   // CURRENTLY in that status, appearing the moment a unit is
   // explicitly moved there (via the dropdown or by dragging) and
-  // disappearing again once the last one leaves it.
+  // disappearing again once the last one leaves it. Guarded against
+  // already being in defaultColumns — a department's own division
+  // preset can happen to share a name with one of these reserved
+  // status names (e.g. a "Staging" division set up before this
+  // feature existed), which would otherwise add a second, visually
+  // identical column for the same name.
   STATUS_FLOW.forEach(status => {
-    if (resources.some(r => r.status === status)) defaultColumns.push(status);
+    if (resources.some(r => r.status === status) && !defaultColumns.includes(status)) defaultColumns.push(status);
   });
   if (!customOrder || customOrder.length === 0) return defaultColumns;
   const known = customOrder.filter(c => defaultColumns.includes(c));
   const newOnes = defaultColumns.filter(c => !customOrder.includes(c));
-  return [...known, ...newOnes];
+  // De-duplicated as a final safety net, not just relying on the guard
+  // above — a customOrder saved back when a name collision like this
+  // could still slip through (or from any other stray cause) would
+  // otherwise keep echoing a duplicate forever, since customOrder is
+  // persisted and simply carries forward whatever it already has.
+  return [...new Set([...known, ...newOnes])];
 }
 const INCIDENT_TYPES = [
   { v: "Structure Fire", c: COLORS.red },
@@ -8378,29 +8388,33 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
                   <button onClick={() => setShowHeaderMenu(false)} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={18} /></button>
                 </div>
 
-                <Btn kind="ghost" icon={Clock}
-                  onClick={() => {
-                    setShowHeaderMenu(false);
-                    if (incident.opEnd) {
-                      // Resuming: start a fresh running segment. The time
-                      // already accumulated (pausedElapsedMs) is preserved
-                      // as-is — only opStart resets, as the reference point
-                      // for counting the NEW segment, not the total.
-                      setIncident({ ...incident, opStart: nowISO(), opEnd: null });
-                    } else {
-                      // Stopping: fold this segment's elapsed time into the
-                      // running total before freezing the display, instead
-                      // of discarding it (which is what the old opStart-only
-                      // reset on resume used to do).
-                      const segmentMs = Math.max(0, Date.now() - new Date(incident.opStart).getTime());
-                      setIncident({ ...incident, pausedElapsedMs: (incident.pausedElapsedMs || 0) + segmentMs, opEnd: nowISO() });
-                    }
-                  }}
-                  style={{ width: "100%", justifyContent: "center" }}>
-                  {incident.opEnd ? "Resume Clock" : "Stop Clock"}
-                </Btn>
+                {!restricted && (
+                  <Btn kind="ghost" icon={Clock}
+                    onClick={() => {
+                      setShowHeaderMenu(false);
+                      if (incident.opEnd) {
+                        // Resuming: start a fresh running segment. The time
+                        // already accumulated (pausedElapsedMs) is preserved
+                        // as-is — only opStart resets, as the reference point
+                        // for counting the NEW segment, not the total.
+                        setIncident({ ...incident, opStart: nowISO(), opEnd: null });
+                      } else {
+                        // Stopping: fold this segment's elapsed time into the
+                        // running total before freezing the display, instead
+                        // of discarding it (which is what the old opStart-only
+                        // reset on resume used to do).
+                        const segmentMs = Math.max(0, Date.now() - new Date(incident.opStart).getTime());
+                        setIncident({ ...incident, pausedElapsedMs: (incident.pausedElapsedMs || 0) + segmentMs, opEnd: nowISO() });
+                      }
+                    }}
+                    style={{ width: "100%", justifyContent: "center" }}>
+                    {incident.opEnd ? "Resume Clock" : "Stop Clock"}
+                  </Btn>
+                )}
                 <Btn kind="ghost" icon={FolderOpen} onClick={() => { setShowHeaderMenu(false); setShowLib(true); }} style={{ width: "100%", justifyContent: "center" }}>Incidents</Btn>
-                <Btn kind="ghost" icon={Printer} onClick={() => { setShowHeaderMenu(false); downloadPacketPdf({ incident, resources, comms, org, safety, ics208, ics208hm, ics209, ics206, rehab, logs, formsUsed, mapData, attachments, assignmentPresets: presets.assignments, resourceColumnOrder }); }} style={{ width: "100%", justifyContent: "center" }}>Print / Export</Btn>
+                {!restricted && (
+                  <Btn kind="ghost" icon={Printer} onClick={() => { setShowHeaderMenu(false); downloadPacketPdf({ incident, resources, comms, org, safety, ics208, ics208hm, ics209, ics206, rehab, logs, formsUsed, mapData, attachments, assignmentPresets: presets.assignments, resourceColumnOrder }); }} style={{ width: "100%", justifyContent: "center" }}>Print / Export</Btn>
+                )}
                 <Btn kind="ghost" icon={Lock} onClick={() => { setShowHeaderMenu(false); onLock(); }} style={{ width: "100%", justifyContent: "center" }}>Lock</Btn>
                 <Btn kind="ghost" icon={theme === "dark" ? Sun : Moon} onClick={() => { setShowHeaderMenu(false); toggleTheme(); }} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} style={{ width: "100%", justifyContent: "center" }}>{theme === "dark" ? "Light" : "Dark"}</Btn>
                 <Btn kind="ghost" icon={Settings} onClick={() => { setShowHeaderMenu(false); setShowAdminAuth(true); }} style={{ width: "100%", justifyContent: "center" }}>Admin</Btn>
