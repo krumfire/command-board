@@ -6718,7 +6718,7 @@ function ManageIncidentTypesModal({ onClose, onBack, incidentTypes, onAdd, onRen
 // ever renders. Previously, changing the admin password specifically
 // only lived inside the archive browsing flow, several steps removed
 // from where someone would naturally look for it.
-function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings }) {
+function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
       <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
@@ -6728,6 +6728,7 @@ function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onManageIncid
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Btn kind="ghost" icon={KeyRound} onClick={onChangePin} style={{ width: "100%", justifyContent: "center" }}>Change PIN</Btn>
+          <Btn kind="ghost" icon={KeyRound} onClick={onSetLimitedPin} style={{ width: "100%", justifyContent: "center" }}>Set Limited-Access PIN</Btn>
           <Btn kind="ghost" icon={Lock} onClick={onChangeAdminPassword} style={{ width: "100%", justifyContent: "center" }}>Change Admin Password</Btn>
           <Btn kind="ghost" icon={ClipboardList} onClick={onManageIncidentTypes} style={{ width: "100%", justifyContent: "center" }}>Manage Incident Types</Btn>
           <Btn kind="ghost" icon={Settings} onClick={onManageResources} style={{ width: "100%", justifyContent: "center" }}>Manage Resources</Btn>
@@ -6876,6 +6877,76 @@ function ChangeArchivePasswordModal({ onClose, onBack }) {
             {error && <div style={{ color: COLORS.dangerText, fontSize: 12 }}>{error}</div>}
             <Btn kind="solid" onClick={submit} disabled={status === "saving"} style={{ justifyContent: "center" }}>
               {status === "saving" ? "Saving…" : "Save New Password"}
+            </Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A second, separate PIN (config.limitedPinHash) that unlocks the
+// board with only Resource Board, Mapping, and Weather visible (see
+// PinGate.jsx's accessLevel and AppInner's restricted prop) — for
+// giving someone (a dispatcher, a mutual-aid partner) status/situational
+// visibility without full command-board access. Setting it here
+// doesn't require the current limited PIN the way ChangePinModal
+// requires the current main PIN — reaching this modal already required
+// the separate admin password (see PasswordConfirmModal), and there
+// may not be an existing limited PIN yet to confirm against.
+function LimitedPinModal({ onClose, onBack }) {
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState(""); // "" | "saving" | "done"
+
+  const submit = async () => {
+    setError("");
+    if (next.length < 4) { setError("PIN must be at least 4 digits."); return; }
+    if (next !== confirm) { setError("PINs don't match."); return; }
+    setStatus("saving");
+    const cfg = await loadPinConfig();
+    const nextHash = await sha256(next);
+    // Must differ from the main PIN — PinGate checks the main PIN
+    // first, so an identical limited PIN would always unlock full
+    // access and the restriction would never actually apply.
+    if (cfg && nextHash === cfg.pinHash) {
+      setStatus("");
+      setError("This PIN matches the main board PIN — choose a different one.");
+      return;
+    }
+    await savePinConfig({ ...cfg, limitedPinHash: nextHash });
+    setStatus("done");
+    setTimeout(onClose, 900);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+      <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onBack && <button onClick={onBack} title="Back to Admin" style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><ChevronLeft size={18} /></button>}
+            <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 14 }}>Limited-Access PIN</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={16} /></button>
+        </div>
+        {status === "done" ? (
+          <div style={{ color: COLORS.teal, fontSize: 13, textAlign: "center", padding: "10px 0" }}>Limited-access PIN saved.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 11.5, color: COLORS.muted, lineHeight: 1.5 }}>
+              Anyone who enters this PIN instead of the main one only sees Resource Board, Mapping, and Weather once they open an incident.
+            </div>
+            <Field label="New Limited-Access PIN">
+              <TextInput id="limited-pin-new" name="limited-pin-new" autoComplete="off" type="password" inputMode="numeric" value={next} onChange={e => setNext(e.target.value.replace(/\D/g, ""))} maxLength={12} />
+            </Field>
+            <Field label="Confirm PIN">
+              <TextInput id="limited-pin-confirm" name="limited-pin-confirm" autoComplete="off" type="password" inputMode="numeric" value={confirm} onChange={e => setConfirm(e.target.value.replace(/\D/g, ""))} maxLength={12}
+                onKeyDown={e => e.key === "Enter" && submit()} />
+            </Field>
+            {error && <div style={{ color: COLORS.dangerText, fontSize: 12 }}>{error}</div>}
+            <Btn kind="solid" onClick={submit} disabled={status === "saving"} style={{ justifyContent: "center" }}>
+              {status === "saving" ? "Saving…" : "Save Limited-Access PIN"}
             </Btn>
           </div>
         )}
@@ -7250,7 +7321,7 @@ export default function App() {
     <>
       <GlobalStyles />
       <PinGate>
-        {(lock) => <AppInner onLock={lock} theme={theme} toggleTheme={toggleTheme} />}
+        {(lock, accessLevel) => <AppInner onLock={lock} restricted={accessLevel === "limited"} theme={theme} toggleTheme={toggleTheme} />}
       </PinGate>
     </>
   );
@@ -7275,10 +7346,14 @@ function useOnlineStatus() {
   return online;
 }
 
-function AppInner({ onLock, theme, toggleTheme }) {
+function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const online = useOnlineStatus();
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState("201");
+  const [tab, setTab] = useState(restricted ? "resources" : "201");
+  // Limited-PIN sessions only ever see these three — set once at PIN
+  // entry (see PinGate.jsx) and fixed for the session, not something
+  // that can change without a full re-lock/re-unlock.
+  const visibleTabs = restricted ? TABS.filter(t => ["resources", "mapping", "weather"].includes(t.k)) : TABS;
   // Set right before a tab change that's paired with a scroll-to-a-
   // specific-section request (the Weather dropdown below) — lets that
   // section-scroll effect run without this scroll-to-top effect
@@ -7301,6 +7376,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
   }, [tab]);
   const [showLib, setShowLib] = useState(false);
   const [showChangePin, setShowChangePin] = useState(false);
+  const [showLimitedPin, setShowLimitedPin] = useState(false);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
@@ -8334,7 +8410,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
 
           {/* TAB NAV */}
           <div style={{ display: "flex", gap: 2, padding: "0 16px", overflowX: "auto" }}>
-            {TABS.map(t => (
+            {visibleTabs.map(t => (
               <div key={t.k} style={{ position: "relative" }}
                 ref={t.k === "weather" ? weatherTabRef : undefined}
                 onMouseEnter={() => t.k === "weather" && openWeatherDropdown()}
@@ -8529,6 +8605,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
         <AdminModal
           onClose={() => setShowAdminMenu(false)}
           onChangePin={() => { setShowAdminMenu(false); setShowChangePin(true); }}
+          onSetLimitedPin={() => { setShowAdminMenu(false); setShowLimitedPin(true); }}
           onChangeAdminPassword={() => { setShowAdminMenu(false); setShowChangeArchivePassword(true); }}
           onManageIncidentTypes={() => { setShowAdminMenu(false); setShowManageIncidentTypes(true); }}
           onManageResources={() => { setShowAdminMenu(false); setManageResourcesFromAdmin(true); setShowManageResources(true); }}
@@ -8547,6 +8624,7 @@ function AppInner({ onLock, theme, toggleTheme }) {
         />
       )}
       {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} onBack={() => { setShowChangePin(false); setShowAdminMenu(true); }} />}
+      {showLimitedPin && <LimitedPinModal onClose={() => setShowLimitedPin(false)} onBack={() => { setShowLimitedPin(false); setShowAdminMenu(true); }} />}
       {showManageIncidentTypes && (
         <ManageIncidentTypesModal
           onClose={() => setShowManageIncidentTypes(false)}

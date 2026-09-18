@@ -24,9 +24,12 @@ function readUnlockRecord() {
 // Exported so ChangePinModal (in App.jsx) can refresh the record with
 // the new hash immediately after a PIN change — otherwise the old
 // hash would no longer match on the very next reload, breaking the
-// grace period right after a legitimate change.
-export function refreshUnlockRecord(hash) {
-  try { localStorage.setItem(UNLOCK_KEY, JSON.stringify({ hash, at: Date.now() })); } catch { /* private browsing, etc. */ }
+// grace period right after a legitimate change. level defaults to
+// "full" for ChangePinModal's existing call sites (which only ever
+// touch the main PIN); the limited-access unlock path below passes
+// "limited" explicitly.
+export function refreshUnlockRecord(hash, level = "full") {
+  try { localStorage.setItem(UNLOCK_KEY, JSON.stringify({ hash, level, at: Date.now() })); } catch { /* private browsing, etc. */ }
 }
 function clearUnlockRecord() {
   try { localStorage.removeItem(UNLOCK_KEY); } catch { /* ignore */ }
@@ -66,6 +69,10 @@ export default function PinGate({ children }) {
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [error, setError] = useState("");
+  // "full" | "limited" — which PIN was used to unlock. Determines
+  // whether AppInner shows every tab or just Resource Board, Mapping,
+  // and Weather (see the restricted prop passed to it in App.jsx).
+  const [accessLevel, setAccessLevel] = useState("full");
 
   useEffect(() => {
     (async () => {
@@ -76,9 +83,12 @@ export default function PinGate({ children }) {
         return;
       }
       const record = readUnlockRecord();
-      const withinGrace = record && record.hash === cfg.pinHash && (Date.now() - record.at) < GRACE_PERIOD_MS;
+      const recordLevel = record?.level || "full";
+      const expectedHash = recordLevel === "limited" ? cfg.limitedPinHash : cfg.pinHash;
+      const withinGrace = record && expectedHash && record.hash === expectedHash && (Date.now() - record.at) < GRACE_PERIOD_MS;
       if (withinGrace) {
-        refreshUnlockRecord(cfg.pinHash); // sliding window — still-active use keeps extending it
+        refreshUnlockRecord(expectedHash, recordLevel); // sliding window — still-active use keeps extending it
+        setAccessLevel(recordLevel);
         setPhase("unlocked");
       } else {
         clearUnlockRecord();
@@ -94,9 +104,10 @@ export default function PinGate({ children }) {
   // right then would wrongly lock someone out despite continuous use.
   useEffect(() => {
     if (phase !== "unlocked" || !config) return;
-    const interval = setInterval(() => refreshUnlockRecord(config.pinHash), 60 * 1000);
+    const hash = accessLevel === "limited" ? config.limitedPinHash : config.pinHash;
+    const interval = setInterval(() => refreshUnlockRecord(hash, accessLevel), 60 * 1000);
     return () => clearInterval(interval);
-  }, [phase, config]);
+  }, [phase, config, accessLevel]);
 
   const doSetup = async () => {
     unlockAudioContext(); // must happen synchronously, before any await, to count as "within the gesture"
@@ -105,7 +116,8 @@ export default function PinGate({ children }) {
     if (pin !== pin2) return setError("PINs don't match.");
     const pinHash = await sha256(pin);
     await savePinConfig({ pinHash });
-    refreshUnlockRecord(pinHash);
+    refreshUnlockRecord(pinHash, "full");
+    setAccessLevel("full");
     setPhase("unlocked");
   };
 
@@ -114,7 +126,12 @@ export default function PinGate({ children }) {
     setError("");
     const hash = await sha256(pin);
     if (hash === config.pinHash) {
-      refreshUnlockRecord(hash);
+      refreshUnlockRecord(hash, "full");
+      setAccessLevel("full");
+      setPhase("unlocked");
+    } else if (config.limitedPinHash && hash === config.limitedPinHash) {
+      refreshUnlockRecord(hash, "limited");
+      setAccessLevel("limited");
       setPhase("unlocked");
     } else {
       setError("Incorrect PIN.");
@@ -133,7 +150,7 @@ export default function PinGate({ children }) {
     setPhase("locked");
   };
 
-  if (phase === "unlocked") return typeof children === "function" ? children(lock) : children;
+  if (phase === "unlocked") return typeof children === "function" ? children(lock, accessLevel) : children;
 
   const isSetup = phase === "setup";
 
