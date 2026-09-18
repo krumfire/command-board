@@ -3,21 +3,61 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:build": "vite build && electron-builder --win",
+    "electron:build:portable": "vite build && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "org.krumfd.commandboard",
+    "productName": "KFD Command Board",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build-resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
     "firebase": "^10.14.1",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "lucide-react": "^0.383.0",
+    "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^0.20.5"
   }
