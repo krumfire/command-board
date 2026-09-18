@@ -18,6 +18,7 @@ import { COLORS, KFD_PATCH_DATA_URI, THEME_CSS } from "./theme";
 import PinGate, { refreshUnlockRecord } from "./PinGate.jsx";
 import { playMaydayTone, stopMaydayTone, unlockAudioContext, setupAudioResumeListeners } from "./audio";
 import { sha256 } from "./pin";
+import { fillAndDownloadIcsPdf, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields } from "./icsPdfExport";
 import L from "leaflet";
 import "leaflet-draw";
 import "leaflet/dist/leaflet.css";
@@ -961,6 +962,45 @@ function InfoTooltip({ children, width = 320 }) {
         document.body
       )}
     </span>
+  );
+}
+
+// A consistent Export button for each ICS form's Panel header —
+// shared loading/error handling so each form's own export wiring only
+// needs to supply what fields go where, not its own copy of this
+// state machine. onExport does the actual pdf-lib fill-and-download
+// work and is expected to throw with a useful message on failure.
+// onExport may return a warning string (a non-fatal caveat about the
+// export that just succeeded, e.g. more rows than the template's one
+// page fits — see mapIcs205Fields' truncatedRowCount) — shown in
+// amber, distinct from an actual failure (a thrown error) shown in
+// red, since a truncated-but-successful export shouldn't read as one.
+function ExportPdfButton({ onExport }) {
+  const [status, setStatus] = useState(""); // "" | "exporting"
+  const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
+  const handleClick = async () => {
+    setStatus("exporting");
+    setError("");
+    setWarning("");
+    try {
+      const result = await onExport();
+      if (result) setWarning(result);
+      setStatus("");
+    } catch (err) {
+      console.error("ICS PDF export failed:", err);
+      setError(err?.message || "Export failed — please try again.");
+      setStatus("");
+    }
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {error && <span style={{ fontSize: 11, color: COLORS.dangerText }}>{error}</span>}
+      {!error && warning && <span style={{ fontSize: 11, color: COLORS.amber }}>{warning}</span>}
+      <Btn kind="subtle" icon={Download} onClick={handleClick} disabled={status === "exporting"} style={{ padding: "6px 11px", fontSize: 12.5 }}>
+        {status === "exporting" ? "Exporting…" : "Export PDF"}
+      </Btn>
+    </div>
   );
 }
 
@@ -3933,9 +3973,14 @@ function TabComms({ comms, setComms, incident }) {
   const remove = (id) => setComms({ ...comms, rows: comms.rows.filter(c => c.id !== id) });
   const set = (patch) => setComms({ ...comms, ...patch });
   const cell = { padding: "6px 6px", fontSize: 12.5 };
+  const doExport = async () => {
+    const { textFields, overlayTexts, truncatedRowCount } = mapIcs205Fields(incident, comms);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-205.pdf", filename: icsFilename("ICS-205", incident), textFields, overlayTexts });
+    if (truncatedRowCount > 0) return `Only the first 8 of ${comms.rows.length} channels fit on the form — ${truncatedRowCount} left off.`;
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="ICS-205 · Incident Radio Communications Plan" icon={Radio}>
+      <Panel title="ICS-205 · Incident Radio Communications Plan" icon={Radio} right={<ExportPdfButton onExport={doExport} />}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
           <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
           <Field label="Date / Time Prepared"><TextInput type="datetime-local" value={comms.dateTimePrepared} onChange={e => set({ dateTimePrepared: e.target.value })} /></Field>
@@ -4131,8 +4176,12 @@ function TabRehab({ rehab, setRehab, resources, now }) {
    ============================================================ */
 function Tab208({ ics208, setIcs208, incident }) {
   const set = (patch) => setIcs208({ ...ics208, ...patch });
+  const doExport = async () => {
+    const { textFields, checkboxFields, overlayTexts } = mapIcs208Fields(incident, ics208);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-208.pdf", filename: icsFilename("ICS-208", incident), textFields, checkboxFields, overlayTexts });
+  };
   return (
-    <Panel title="ICS-208 · Safety Message / Plan" icon={AlertTriangle}>
+    <Panel title="ICS-208 · Safety Message / Plan" icon={AlertTriangle} right={<ExportPdfButton onExport={doExport} />}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
         <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
         <Field label="Date / Time Prepared"><TextInput type="datetime-local" value={ics208.dateTime} onChange={e => set({ dateTime: e.target.value })} /></Field>
@@ -4208,9 +4257,15 @@ function Tab208HM({ ics208hm, setIcs208hm, incident, mapData }) {
   const updateMaterial = (id, patch) => set({ materials: ics208hm.materials.map(m => m.id === id ? { ...m, ...patch } : m) });
   const removeMaterial = (id) => set({ materials: ics208hm.materials.filter(m => m.id !== id) });
 
+  const doExport = async () => {
+    const { textFields, checkboxFields, overlayTexts, fontSizes, multilineFields, truncatedMaterialCount } = mapIcs208HMFields(incident, ics208hm);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-208hm.pdf", filename: icsFilename("ICS-208HM", incident), textFields, checkboxFields, overlayTexts, fontSizes, multilineFields });
+    if (truncatedMaterialCount > 0) return `Only the first 4 materials fit on the form — ${truncatedMaterialCount} left off.`;
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="ICS-208 HM · Site Safety and Control Plan" icon={AlertTriangle}>
+      <Panel title="ICS-208 HM · Site Safety and Control Plan" icon={AlertTriangle} right={<ExportPdfButton onExport={doExport} />}>
         <IncidentSummaryStrip incident={incident} mapData={mapData} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
           <Field label="Date Prepared"><TextInput type="datetime-local" value={ics208hm.dateTime} onChange={e => set({ dateTime: e.target.value })} /></Field>
@@ -4438,9 +4493,20 @@ function Tab209({ ics209, setIcs209, incident, mapData }) {
   const updateCommitment = (id, patch) => set({ resourceCommitments: ics209.resourceCommitments.map(r => r.id === id ? { ...r, ...patch } : r) });
   const removeCommitment = (id) => set({ resourceCommitments: ics209.resourceCommitments.filter(r => r.id !== id) });
 
+  const doExport = async () => {
+    const { textFields, checkboxFields, overlayTexts } = mapIcs209Fields(incident, ics209);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-209.pdf", filename: icsFilename("ICS-209", incident), textFields, checkboxFields, overlayTexts });
+    // Not a truncation warning like the row-limited forms — this
+    // form's page 4 (a 21-column resource-type grid) has no
+    // reasonable mapping from this app's own flat resourceCommitments
+    // list at all, so it's left blank on every export, not just when
+    // there happen to be more rows than fit.
+    return "Note: page 4 (Resource Commitment Summary) isn't filled — its column layout doesn't match how this app tracks resources. Fill that page manually if needed.";
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="ICS-209 · Incident Status Summary — Page 1" icon={ClipboardList}>
+      <Panel title="ICS-209 · Incident Status Summary — Page 1" icon={ClipboardList} right={<ExportPdfButton onExport={doExport} />}>
         <IncidentSummaryStrip incident={incident} mapData={mapData} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           <Field label="Report Version">
@@ -4664,10 +4730,19 @@ function Tab206({ ics206, setIcs206, incident }) {
   const addRow = (key, row) => setIcs206({ ...ics206, [key]: [...ics206[key], row] });
   const updateRow = (key, id, patch) => setIcs206({ ...ics206, [key]: ics206[key].map(r => r.id === id ? { ...r, ...patch } : r) });
   const removeRow = (key, id) => setIcs206({ ...ics206, [key]: ics206[key].filter(r => r.id !== id) });
+  const doExport = async () => {
+    const { textFields, checkboxFields, overlayTexts, truncatedCounts } = mapIcs206Fields(incident, ics206);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-206.pdf", filename: icsFilename("ICS-206", incident), textFields, checkboxFields, overlayTexts });
+    const notes = [];
+    if (truncatedCounts.aidStations > 0) notes.push(`${truncatedCounts.aidStations} aid station(s)`);
+    if (truncatedCounts.ambulances > 0) notes.push(`${truncatedCounts.ambulances} ambulance service(s)`);
+    if (truncatedCounts.hospitals > 0) notes.push(`${truncatedCounts.hospitals} hospital(s)`);
+    if (notes.length > 0) return `Form only fits so many rows per section — left off: ${notes.join(", ")}.`;
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="ICS-206 · Medical Plan" icon={HeartPulse}>
+      <Panel title="ICS-206 · Medical Plan" icon={HeartPulse} right={<ExportPdfButton onExport={doExport} />}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
           <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12 }}>
@@ -4824,9 +4899,18 @@ function Tab201Full({ incident, setIncident, org, objectivesByType, onAddObjecti
   const cell = { padding: "6px 6px", fontSize: 12.5, verticalAlign: "top" };
   const orgLines = flattenOrgFilled(org).map(item => `${"  ".repeat(item.depth || 0)}${item.title}: ${item.name}`);
 
+  const doExport = async () => {
+    const { textFields, checkboxFields, overlayTexts, fontSizes, truncatedCounts } = mapIcs201Fields(incident, orgLines);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-201.pdf", filename: icsFilename("ICS-201", incident), textFields, checkboxFields, overlayTexts, fontSizes });
+    const notes = [];
+    if (truncatedCounts.actionsLog > 0) notes.push(`${truncatedCounts.actionsLog} action log entry/entries`);
+    if (truncatedCounts.resourceOrders > 0) notes.push(`${truncatedCounts.resourceOrders} resource order(s)`);
+    if (notes.length > 0) return `Form only fits so many rows per section — left off: ${notes.join(", ")}.`;
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Panel title="ICS-201 · Incident Briefing (Official Form)" icon={ClipboardList}>
+      <Panel title="ICS-201 · Incident Briefing (Official Form)" icon={ClipboardList} right={<ExportPdfButton onExport={doExport} />}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
           <Field label="1. Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
           <Field label="2. Incident Number"><TextInput value={incident.number} onChange={e => setIncident({ ...incident, number: e.target.value })} /></Field>
