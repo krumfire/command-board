@@ -8021,7 +8021,6 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
             <img src={KFD_PATCH_DATA_URI} alt="KFD Patch" style={{ width: 34, height: 44, objectFit: "contain", flexShrink: 0 }} />
             <div>
               <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, letterSpacing: "0.03em", lineHeight: 1 }}>ICS FORMS</div>
-              <div style={{ fontSize: 10.5, color: COLORS.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Standalone — not tied to an incident</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
