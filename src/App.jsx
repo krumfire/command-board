@@ -18,7 +18,7 @@ import { COLORS, KFD_PATCH_DATA_URI, THEME_CSS } from "./theme";
 import PinGate, { refreshUnlockRecord } from "./PinGate.jsx";
 import { playMaydayTone, stopMaydayTone, unlockAudioContext, setupAudioResumeListeners } from "./audio";
 import { sha256 } from "./pin";
-import { fillAndDownloadIcsPdf, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields } from "./icsPdfExport";
+import { fillAndDownloadIcsPdf, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields } from "./icsPdfExport";
 import L from "leaflet";
 import "leaflet-draw";
 import "leaflet/dist/leaflet.css";
@@ -5058,7 +5058,7 @@ function TabICSForms(props) {
       {selected === "208hm" && <Tab208HM ics208hm={props.ics208hm} setIcs208hm={props.setIcs208hm} incident={props.incident} mapData={props.mapData} />}
       {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} mapData={props.mapData} />}
       {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} />}
-      {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} />}
+      {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} />}
     </div>
   );
 }
@@ -5204,7 +5204,7 @@ function TabAttachments({ attachments, onUpload, onDelete }) {
   );
 }
 
-function Tab214({ logs, setLogs }) {
+function Tab214({ logs, setLogs, incident }) {
   const [activeLog, setActiveLog] = useState(logs[0]?.id || null);
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
@@ -5226,8 +5226,19 @@ function Tab214({ logs, setLogs }) {
 
   const log = logs.find(l => l.id === activeLog);
 
+  const doExport = async () => {
+    const { textFields, fontSizes, overlayTexts, truncatedEntryCount } = mapIcs214Fields(incident, log);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-214.pdf", filename: icsFilename("ICS-214", incident), textFields, fontSizes, overlayTexts });
+    if (truncatedEntryCount > 0) return `Only the first 60 entries fit on the form — ${truncatedEntryCount} left off.`;
+  };
+
   return (
-    <Panel title="ICS-214 · Unit / Activity Log" icon={ClipboardList} right={<Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>}>
+    <Panel title="ICS-214 · Unit / Activity Log" icon={ClipboardList} right={
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {log && <ExportPdfButton onExport={doExport} />}
+        <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>
+      </div>
+    }>
       {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
       {logs.length > 0 && (
         <>
@@ -5284,8 +5295,19 @@ function Tab215A({ safety, setSafety, org, incident }) {
   const divisionOptions = flattenOrgTitles(org);
   const cell = { padding: "6px 6px", fontSize: 12.5, verticalAlign: "top" };
 
+  const doExport = async () => {
+    const { textFields, overlayTexts, truncatedRowCount } = mapIcs215AFields(incident, safety);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-215a.pdf", filename: icsFilename("ICS-215A", incident), textFields, overlayTexts });
+    if (truncatedRowCount > 0) return `Only the first 14 hazard rows fit on the form — ${truncatedRowCount} left off.`;
+  };
+
   return (
-    <Panel title="ICS-215A · Incident Action Plan Safety Analysis" icon={AlertTriangle} right={<Btn kind="subtle" icon={Plus} onClick={addRow}>Add Hazard</Btn>}>
+    <Panel title="ICS-215A · Incident Action Plan Safety Analysis" icon={AlertTriangle} right={
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <ExportPdfButton onExport={doExport} />
+        <Btn kind="subtle" icon={Plus} onClick={addRow}>Add Hazard</Btn>
+      </div>
+    }>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
         <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
         <Field label="Incident Number"><TextInput value={incident.number} disabled style={{ opacity: 0.65 }} /></Field>

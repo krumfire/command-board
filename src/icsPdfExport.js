@@ -641,3 +641,126 @@ export function mapIcs209Fields(incident, ics209) {
     ],
   };
 }
+
+// Formats a full ISO timestamp (as this app's activity-log entries
+// store, via nowISO()) as "MM/DD HH:MM" for the ICS-214's combined
+// Date/Time column — includes the date (not just time) since a log
+// can span multiple days, unlike a datetime-local value which
+// splitDateTimeLocal above already expects a different, "YYYY-MM-
+// DDTHH:MM" shaped string for.
+function fmtLogDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const date = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${date} ${time}`;
+}
+
+// Maps a single activity log (one of this app's possibly-several
+// per-unit/position logs — see Tab214) onto one ICS-214. Only the
+// currently-selected log is exported at a time, matching every other
+// form here exporting "this form's current data," not a batch of
+// everything the incident has.
+export function mapIcs214Fields(incident, log) {
+  const textFields = {
+    "1 Incident Name_19": incident.name,
+    "1 Incident Name_20": incident.name,
+    "3 Name": log.name, "4 ICS Position": log.position, "5 Home Agency and Unit": log.agency,
+    // This app has no dedicated "prepared by" name/position separate
+    // from the log's own — the person keeping an activity log IS the
+    // one preparing it, so its own Name/Position are reused for
+    // Section 8 on both pages rather than left blank. Signature and a
+    // prepared date/time aren't collected anywhere for a log (only
+    // each entry's own timestamp is), so those stay blank rather than
+    // fabricated.
+    "8 Prepared by Name": log.name, "PositionTitle_15": log.position,
+    "8 Prepared by Name_2": log.name, "PositionTitle_16": log.position,
+  };
+
+  // Chronological, oldest-first, for export — the reverse of how
+  // Tab214 stores and displays them (newest-first, so the latest
+  // entry is easiest to find while actively logging) since a
+  // completed activity log is conventionally read top-to-bottom in
+  // the order things actually happened, matching the row-by-row
+  // layout of the official form itself.
+  const chronological = [...(log.entries || [])].reverse();
+  // Page 1 holds 24 rows (DateTimeRow1..24); page 2 continues with 24
+  // more under a "_2" suffix (DateTimeRow1_2..24_2, entries 25-48)
+  // before switching to a third, unsuffixed numbering picking up at
+  // 25 (DateTimeRow25..36, entries 49-60) — confirmed against the
+  // template's own field list rather than assumed, since a plausible
+  // but wrong guess here (e.g. expecting _2 through all 36) would
+  // have silently dropped the last dozen rows.
+  const fieldNamesFor = (n) => {
+    if (n <= 24) return { date: `DateTimeRow${n}`, text: `Notable ActivitiesRow${n}` };
+    if (n <= 48) return { date: `DateTimeRow${n - 24}_2`, text: `Notable ActivitiesRow${n - 24}_2` };
+    return { date: `DateTimeRow${n - 24}`, text: `Notable ActivitiesRow${n - 24}` };
+  };
+  const MAX_ENTRIES = 60;
+  chronological.slice(0, MAX_ENTRIES).forEach((entry, i) => {
+    const { date, text } = fieldNamesFor(i + 1);
+    textFields[date] = fmtLogDateTime(entry.time);
+    textFields[text] = entry.text;
+  });
+
+  return {
+    textFields,
+    // Position/Title can easily run longer than this narrow field's
+    // default size accommodates (e.g. "Communications Unit Leader" —
+    // observed clipping in testing), so both instances get a smaller
+    // explicit size rather than leaving it to the field's own default.
+    fontSizes: { "PositionTitle_15": 7, "PositionTitle_16": 7 },
+    // Signature_21 (page 1) / Signature_22 (page 2) are PDF signature
+    // fields — left undrawn here since this app never collects a
+    // signature for an activity log, rather than fabricating one from
+    // the log's own name.
+    overlayTexts: [],
+    truncatedEntryCount: Math.max(0, chronological.length - MAX_ENTRIES),
+  };
+}
+
+export function mapIcs215AFields(incident, safety) {
+  const from = splitDateTimeLocal(safety.opFrom);
+  const to = splitDateTimeLocal(safety.opTo);
+  const prepared = splitDateTimeLocal(safety.dateTime);
+  const preparedCombined = prepared.date && prepared.time ? `${prepared.date} ${prepared.time}` : prepared.date;
+
+  const textFields = {
+    "1 Incident Name_21": incident.name,
+    "2 Incident Number_10": incident.number,
+    // Section 3's "Date/Time Prepared" and the footer's "DateTime_17"
+    // are the same underlying concept (when the form was prepared) —
+    // this app has only one dateTime field for it, reused for both,
+    // the same pattern used for the other forms' repeated footers.
+    "Date": prepared.date, "Time": prepared.time,
+    "Date From": from.date, "Time From": from.time,
+    "Date To": to.date, "Time To": to.time,
+    "8 Prepared by Safety Officer Name": safety.preparedBy,
+    "DateTime_17": preparedCombined,
+    // "Prepared by Operations Section Chief Name" is left unset —
+    // this app tracks only one preparer (Safety Officer), not a
+    // second one for Operations Section Chief, so there's no source
+    // data to put there rather than a blank placeholder.
+  };
+
+  const MAX_ROWS = 14;
+  safety.rows.slice(0, MAX_ROWS).forEach((r, i) => {
+    const n = i + 1;
+    textFields[`5 Incident AreaRow${n}`] = [r.branch, r.division].filter(Boolean).join(" / ");
+    textFields[`6 HazardsRisksRow${n}`] = r.hazards;
+    textFields[`7 MitigationsRow${n}`] = r.mitigations;
+  });
+
+  return {
+    textFields,
+    // Signature_23 (Safety Officer, this app's own preparer) is drawn
+    // as overlay text since it's a PDF signature field, not a text
+    // field. Signature_24 (Operations Section Chief) is left
+    // undrawn — same reasoning as the name field above.
+    overlayTexts: [
+      { page: 1, rect: [424.68, 98.88, 571.08, 110.88], text: safety.signature, fontSize: 9 },
+    ],
+    truncatedRowCount: Math.max(0, safety.rows.length - MAX_ROWS),
+  };
+}
