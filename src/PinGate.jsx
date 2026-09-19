@@ -69,10 +69,17 @@ export default function PinGate({ children }) {
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [error, setError] = useState("");
-  // "full" | "limited" — which PIN was used to unlock. Determines
-  // whether AppInner shows every tab or just Resource Board, Mapping,
-  // and Weather (see the restricted prop passed to it in App.jsx).
+  // "full" | "limited" | "icsForms" — which PIN was used to unlock.
+  // "full"/"limited" determine which tabs AppInner shows once an
+  // incident is open (see the restricted prop in App.jsx).
+  // "icsForms" bypasses the incident library entirely and goes
+  // straight to a standalone ICS Forms workspace not tied to any
+  // incident (see StandaloneICSForms in App.jsx) — for filling out
+  // and exporting forms (training, practice, ad-hoc use) without the
+  // overhead of creating a real incident record.
   const [accessLevel, setAccessLevel] = useState("full");
+
+  const hashForLevel = (cfg, level) => level === "limited" ? cfg?.limitedPinHash : level === "icsForms" ? cfg?.icsFormsPinHash : cfg?.pinHash;
 
   useEffect(() => {
     (async () => {
@@ -84,7 +91,7 @@ export default function PinGate({ children }) {
       }
       const record = readUnlockRecord();
       const recordLevel = record?.level || "full";
-      const expectedHash = recordLevel === "limited" ? cfg.limitedPinHash : cfg.pinHash;
+      const expectedHash = hashForLevel(cfg, recordLevel);
       const withinGrace = record && expectedHash && record.hash === expectedHash && (Date.now() - record.at) < GRACE_PERIOD_MS;
       if (withinGrace) {
         refreshUnlockRecord(expectedHash, recordLevel); // sliding window — still-active use keeps extending it
@@ -104,7 +111,7 @@ export default function PinGate({ children }) {
   // right then would wrongly lock someone out despite continuous use.
   useEffect(() => {
     if (phase !== "unlocked" || !config) return;
-    const hash = accessLevel === "limited" ? config.limitedPinHash : config.pinHash;
+    const hash = hashForLevel(config, accessLevel);
     const interval = setInterval(() => refreshUnlockRecord(hash, accessLevel), 60 * 1000);
     return () => clearInterval(interval);
   }, [phase, config, accessLevel]);
@@ -132,6 +139,10 @@ export default function PinGate({ children }) {
     } else if (config.limitedPinHash && hash === config.limitedPinHash) {
       refreshUnlockRecord(hash, "limited");
       setAccessLevel("limited");
+      setPhase("unlocked");
+    } else if (config.icsFormsPinHash && hash === config.icsFormsPinHash) {
+      refreshUnlockRecord(hash, "icsForms");
+      setAccessLevel("icsForms");
       setPhase("unlocked");
     } else {
       setError("Incorrect PIN.");
