@@ -5209,7 +5209,7 @@ function Tab214({ logs, setLogs, incident }) {
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
   const addLog = () => {
-    const l = { id: uid(), name: "", position: "", agency: "", entries: [] };
+    const l = { id: uid(), name: "", position: "", agency: "", resourcesAssigned: [], entries: [] };
     setLogs([...logs, l]); setActiveLog(l.id);
   };
   const updateLog = (id, patch) => setLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
@@ -5223,13 +5223,27 @@ function Tab214({ logs, setLogs, incident }) {
     const log = logs.find(l => l.id === logId);
     updateLog(logId, { entries: log.entries.filter(e => e.id !== entryId) });
   };
+  // Defensive fallback to [] throughout — a log saved before this
+  // field existed won't have resourcesAssigned on it at all.
+  const addResource = (id) => updateLog(id, { resourcesAssigned: [...(logs.find(l => l.id === id)?.resourcesAssigned || []), { id: uid(), name: "", icsPosition: "", homeAgency: "" }] });
+  const updateResource = (logId, resId, patch) => {
+    const log = logs.find(l => l.id === logId);
+    updateLog(logId, { resourcesAssigned: (log.resourcesAssigned || []).map(r => r.id === resId ? { ...r, ...patch } : r) });
+  };
+  const removeResource = (logId, resId) => {
+    const log = logs.find(l => l.id === logId);
+    updateLog(logId, { resourcesAssigned: (log.resourcesAssigned || []).filter(r => r.id !== resId) });
+  };
 
   const log = logs.find(l => l.id === activeLog);
 
   const doExport = async () => {
-    const { textFields, fontSizes, overlayTexts, truncatedEntryCount } = mapIcs214Fields(incident, log);
+    const { textFields, fontSizes, overlayTexts, truncatedEntryCount, truncatedResourceCount } = mapIcs214Fields(incident, log);
     await fillAndDownloadIcsPdf({ templateFile: "ics-214.pdf", filename: icsFilename("ICS-214", incident), textFields, fontSizes, overlayTexts });
-    if (truncatedEntryCount > 0) return `Only the first 60 entries fit on the form — ${truncatedEntryCount} left off.`;
+    const notes = [];
+    if (truncatedResourceCount > 0) notes.push(`${truncatedResourceCount} resource(s) assigned`);
+    if (truncatedEntryCount > 0) notes.push(`${truncatedEntryCount} activity log entry/entries`);
+    if (notes.length > 0) return `Form only fits so many rows per section — left off: ${notes.join(", ")}.`;
   };
 
   return (
@@ -5260,6 +5274,22 @@ function Tab214({ logs, setLogs, incident }) {
                 <Field label="Home Agency"><TextInput value={log.agency} onChange={e => updateLog(log.id, { agency: e.target.value })} /></Field>
                 <div style={{ display: "flex", alignItems: "end" }}><Btn kind="danger" icon={Trash2} onClick={() => removeLog(log.id)}>Delete Log</Btn></div>
               </div>
+
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Resources Assigned</div>
+              <Btn kind="subtle" icon={Plus} onClick={() => addResource(log.id)} style={{ marginBottom: 10 }}>Add Resource</Btn>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
+                {(log.resourcesAssigned || []).length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No resources assigned yet.</div>}
+                {(log.resourcesAssigned || []).map(r => (
+                  <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "start" }}>
+                    <TextInput value={r.name} onChange={ev => updateResource(log.id, r.id, { name: ev.target.value })} placeholder="Name" style={{ flex: 1 }} />
+                    <TextInput value={r.icsPosition} onChange={ev => updateResource(log.id, r.id, { icsPosition: ev.target.value })} placeholder="ICS Position" style={{ flex: 1 }} />
+                    <TextInput value={r.homeAgency} onChange={ev => updateResource(log.id, r.id, { homeAgency: ev.target.value })} placeholder="Home Agency (and Unit)" style={{ flex: 1 }} />
+                    <button onClick={() => removeResource(log.id, r.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer", paddingTop: 8 }}><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Activity Log</div>
               <Btn kind="subtle" icon={Plus} onClick={() => addEntry(log.id)} style={{ marginBottom: 10 }}>Add Entry</Btn>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {log.entries.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No entries logged.</div>}

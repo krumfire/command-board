@@ -678,6 +678,22 @@ export function mapIcs214Fields(incident, log) {
     "8 Prepared by Name_2": log.name, "PositionTitle_16": log.position,
   };
 
+  // Resources Assigned (Section 6) — 8 rows fit on the template's
+  // single page 1. Only the "Name" column's field name carries an
+  // odd "_3" suffix for rows 1-6 specifically (not rows 7-8, and not
+  // the other two columns at all) — confirmed against the template's
+  // own field list rather than assumed, since a single shared pattern
+  // guess across all three columns would have been wrong for two of
+  // them.
+  const RESOURCES_MAX = 8;
+  const nameFieldFor = (n) => n <= 6 ? `NameRow${n}_3` : `NameRow${n}`;
+  (log.resourcesAssigned || []).slice(0, RESOURCES_MAX).forEach((r, i) => {
+    const n = i + 1;
+    textFields[nameFieldFor(n)] = r.name;
+    textFields[`ICS PositionRow${n}`] = r.icsPosition;
+    textFields[`Home Agency and UnitRow${n}`] = r.homeAgency;
+  });
+
   // Chronological, oldest-first, for export — the reverse of how
   // Tab214 stores and displays them (newest-first, so the latest
   // entry is easiest to find while actively logging) since a
@@ -717,6 +733,7 @@ export function mapIcs214Fields(incident, log) {
     // the log's own name.
     overlayTexts: [],
     truncatedEntryCount: Math.max(0, chronological.length - MAX_ENTRIES),
+    truncatedResourceCount: Math.max(0, (log.resourcesAssigned || []).length - RESOURCES_MAX),
   };
 }
 
