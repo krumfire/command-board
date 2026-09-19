@@ -38,7 +38,7 @@ function clearUnlockRecord() {
 const wrap = {
   minHeight: "100vh", background: COLORS.bg, color: COLORS.text,
   display: "flex", alignItems: "center", justifyContent: "center",
-  fontFamily: "'IBM Plex Sans', sans-serif", padding: 20,
+  fontFamily: "'Oswald', sans-serif", padding: 20,
 };
 const card = {
   width: 340, background: COLORS.panel, border: `1px solid ${COLORS.line}`,
@@ -47,7 +47,7 @@ const card = {
 const input = {
   width: "100%", background: COLORS.panel2, border: `1px solid ${COLORS.line}`,
   borderRadius: 4, color: COLORS.text, padding: "10px 12px", fontSize: 18,
-  letterSpacing: "0.3em", textAlign: "center", fontFamily: "'IBM Plex Mono', monospace",
+  letterSpacing: "0.3em", textAlign: "center", fontFamily: "'Oswald', sans-serif",
   outline: "none", boxSizing: "border-box",
 };
 const btn = {

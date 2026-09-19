@@ -802,7 +802,7 @@ function makeTextIcon(text) {
   const esc = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return L.divIcon({
     className: "cb-map-text-label",
-    html: `<div style="background:#fff;color:#191C1F;border:1.5px solid #96690F;border-radius:4px;padding:3px 7px;font:600 12px 'IBM Plex Sans',sans-serif;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.4);">${esc}</div>`,
+    html: `<div style="background:#fff;color:#191C1F;border:1.5px solid #96690F;border-radius:4px;padding:3px 7px;font:600 12px 'Oswald',sans-serif;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.4);">${esc}</div>`,
     iconSize: null, // let the content size itself rather than clipping to a fixed box
     iconAnchor: [8, 8],
   });
@@ -879,7 +879,7 @@ function Field({ label, children, wide }) {
           so inputs across the same row don't line up with each
           other. display:block is required for minHeight to do
           anything at all on a span, which is inline by default. */}
-      <span style={{ display: "block", minHeight: 28, lineHeight: "14px", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace" }}>{label}</span>
+      <span style={{ display: "block", minHeight: 28, lineHeight: "14px", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif" }}>{label}</span>
       {children}
     </label>
   );
@@ -904,7 +904,7 @@ const inputStyle = {
   // to be taller on some device, plain text fields sharing the same
   // minHeight grow to match it instead of the two drifting apart.
   minHeight: 44,
-  fontFamily: "'IBM Plex Sans', sans-serif",
+  fontFamily: "'Oswald', sans-serif",
   outline: "none",
 };
 function TextInput(props) {
@@ -921,7 +921,7 @@ function Btn({ children, onClick, kind = "ghost", icon: Icon, style, type = "but
   const base = {
     display: "inline-flex", alignItems: "center", gap: 7,
     padding: "8px 13px", borderRadius: 4, fontSize: 13, fontWeight: 600,
-    fontFamily: "'IBM Plex Sans', sans-serif", cursor: disabled ? "not-allowed" : "pointer",
+    fontFamily: "'Oswald', sans-serif", cursor: disabled ? "not-allowed" : "pointer",
     border: `1px solid ${COLORS.line}`, letterSpacing: "0.02em",
     opacity: disabled ? 0.5 : 1,
   };
@@ -1173,7 +1173,7 @@ function Tab201({ incident, setIncident, resources, incidentTypePresets, objecti
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "16px 0 4px" }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace" }}>Weather Conditions</div>
+          <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif" }}>Weather Conditions</div>
           <Btn kind="subtle" icon={Crosshair} onClick={fetchCurrentWeather} disabled={weatherStatus === "loading"} style={{ padding: "4px 10px", fontSize: 11.5 }}>
             {weatherStatus === "loading" ? "Fetching..." : "Get Current Weather"}
           </Btn>
@@ -1197,7 +1197,7 @@ function Tab201({ incident, setIncident, resources, incidentTypePresets, objecti
 
         <div style={{ marginTop: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace" }}>Current and Planned Objectives</div>
+            <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif" }}>Current and Planned Objectives</div>
             <ObjectivePickerDropdown incidentType={incident.type} objectivesByType={objectivesByType} onPick={addObjectiveFromPreset} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1205,7 +1205,7 @@ function Tab201({ incident, setIncident, resources, incidentTypePresets, objecti
               const isNewObjective = o.trim() && !relevantObjectives.includes(o.trim());
               return (
                 <div key={i} style={{ display: "flex", gap: 8 }}>
-                  <span style={{ width: 22, textAlign: "right", color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, paddingTop: 9 }}>{i + 1}.</span>
+                  <span style={{ width: 22, textAlign: "right", color: COLORS.faint, fontFamily: "'Oswald', sans-serif", fontSize: 13, paddingTop: 9 }}>{i + 1}.</span>
                   <TextInput list="objective-presets" value={o} onChange={e => updateObjective(i, e.target.value)} style={{ flex: 1 }} placeholder="Objective..." />
                   {isNewObjective && (
                     <button onClick={() => onAddObjective(incident.type, o.trim())} title={`Save as a quick-pick objective for ${incident.type || "this type"}`} style={{ background: COLORS.panel2, border: `1px solid ${COLORS.line}`, borderRadius: 4, color: COLORS.amber, cursor: "pointer", padding: "0 8px" }}>
@@ -1222,7 +1222,7 @@ function Tab201({ incident, setIncident, resources, incidentTypePresets, objecti
         </div>
 
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 8 }}>Current and Planned Actions, Strategies, and Tactics</div>
+          <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", marginBottom: 8 }}>Current and Planned Actions, Strategies, and Tactics</div>
           <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 12 }}>
             {[["strategyOffensive", "Offensive"], ["strategyDefensive", "Defensive"], ["strategyTransitional", "Transitional"], ["strategyInvestigative", "Investigative"]].map(([key, label]) => (
               <label key={key} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13 }}>
@@ -1241,11 +1241,11 @@ function Tab201({ incident, setIncident, resources, incidentTypePresets, objecti
           <Btn kind="subtle" icon={Plus} onClick={addAction} style={{ marginTop: 4 }}>Add Entry</Btn>
         </div>
 
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "18px 0 8px" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "18px 0 8px" }}>
           Current Organization — see the Org Chart tab (Incident Commander(s), Section Chiefs, Safety Officer, PIO, Liaison Officer)
         </div>
 
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "18px 0 8px" }}>Prepared By</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "18px 0 8px" }}>Prepared By</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
           <Field label="Name"><TextInput value={incident.preparedBy} onChange={e => setIncident({ ...incident, preparedBy: e.target.value })} /></Field>
           <Field label="Position / Title"><TextInput value={incident.prepPosition} onChange={e => setIncident({ ...incident, prepPosition: e.target.value })} /></Field>
@@ -1441,7 +1441,7 @@ function ParHistoryModal({ history, ignoredReminders, onClose, onSelectEvent }) 
                       <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 13, fontWeight: 700, color: COLORS.muted }}>
                         PAR REMINDER IGNORED
                       </span>
-                      <span style={{ fontSize: 11.5, color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDateTimeShort(p.at)}</span>
+                      <span style={{ fontSize: 11.5, color: COLORS.muted, fontFamily: "'Oswald', sans-serif" }}>{fmtDateTimeShort(p.at)}</span>
                     </div>
                   </div>
                 );
@@ -1454,7 +1454,7 @@ function ParHistoryModal({ history, ignoredReminders, onClose, onSelectEvent }) 
                     <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 13, fontWeight: 700, color: isMayday ? COLORS.red : COLORS.text }}>
                       {isMayday ? "MAYDAY" : "PAR"}
                     </span>
-                    <span style={{ fontSize: 11.5, color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace" }}>
+                    <span style={{ fontSize: 11.5, color: COLORS.muted, fontFamily: "'Oswald', sans-serif" }}>
                       {fmtDateTimeShort(p.startedAt)} → {fmtDateTimeShort(p.completedAt)} · {p.checkedUnits} of {p.totalUnits} units
                     </span>
                   </div>
@@ -1526,7 +1526,7 @@ function ParEventDetailModal({ event, incidentName, onClose }) {
                     <td style={{ padding: "6px 8px", fontWeight: 600 }}>{u.label}</td>
                     <td style={{ padding: "6px 8px", color: COLORS.muted }}>{u.assignment || "—"}</td>
                     <td style={{ padding: "6px 8px", color: COLORS.muted }}>{u.task || "—"}</td>
-                    <td style={{ padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.teal }}>{fmtDateTimeShort(u.checkedAt)}</td>
+                    <td style={{ padding: "6px 8px", fontFamily: "'Oswald', sans-serif", fontSize: 12, color: COLORS.teal }}>{fmtDateTimeShort(u.checkedAt)}</td>
                   </tr>
                 ))}
                 {(event.uncheckedUnitDetails || []).map(u => (
@@ -1534,7 +1534,7 @@ function ParEventDetailModal({ event, incidentName, onClose }) {
                     <td style={{ padding: "6px 8px", fontWeight: 600, color: COLORS.red }}>{u.label}</td>
                     <td style={{ padding: "6px 8px", color: COLORS.muted }}>{u.assignment || "—"}</td>
                     <td style={{ padding: "6px 8px", color: COLORS.muted }}>{u.task || "—"}</td>
-                    <td style={{ padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.red }}>NOT accounted for</td>
+                    <td style={{ padding: "6px 8px", fontFamily: "'Oswald', sans-serif", fontSize: 12, color: COLORS.red }}>NOT accounted for</td>
                   </tr>
                 ))}
               </tbody>
@@ -1598,7 +1598,7 @@ function ParCheckModal({ mode, resources, parSession, onCheck, onComplete, onClo
                     <td style={{ padding: "6px 8px", textAlign: "center" }}>
                       <input type="checkbox" checked={!!checkedAt} onChange={() => onCheck(r.id)} style={{ width: 18, height: 18 }} />
                     </td>
-                    <td style={{ padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: checkedAt ? COLORS.teal : COLORS.faint }}>
+                    <td style={{ padding: "6px 8px", fontFamily: "'Oswald', sans-serif", fontSize: 12, color: checkedAt ? COLORS.teal : COLORS.faint }}>
                       {checkedAt ? new Date(checkedAt).toLocaleTimeString() : "—"}
                     </td>
                   </tr>
@@ -1996,7 +1996,7 @@ function ResourceCard({ r, onMove, onUpdate, onRemove, now, dragProps, isDraggin
             <GripVertical size={14} />
           </span>
           <div>
-            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 14 }}>{r.label}</div>
+            <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 14 }}>{r.label}</div>
             <div style={{ fontSize: 11.5, color: COLORS.muted }}>{r.kind} · {r.personnel} pers.</div>
             {r.department && <div style={{ fontSize: 10.5, color: COLORS.faint }}>{r.department}</div>}
           </div>
@@ -2005,11 +2005,11 @@ function ResourceCard({ r, onMove, onUpdate, onRemove, now, dragProps, isDraggin
       </div>
       {r.task && <div style={{ fontSize: 11.5, color: COLORS.amber, marginTop: 4 }}>→ {r.task}</div>}
       {prior && (
-        <div style={{ fontSize: 10.5, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", marginTop: 6 }}>
+        <div style={{ fontSize: 10.5, color: COLORS.faint, fontFamily: "'Oswald', sans-serif", marginTop: 6 }}>
           {prior.status} before rehab: {fmtDuration(prior.ms)}
         </div>
       )}
-      <div style={{ fontSize: 10.5, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", marginTop: prior ? 2 : 6 }}>
+      <div style={{ fontSize: 10.5, color: COLORS.faint, fontFamily: "'Oswald', sans-serif", marginTop: prior ? 2 : 6 }}>
         {r.status === "Rehab" ? "in rehab " : "in status "}{elapsed(r.statusSince, cardNow)}
       </div>
       {editing ? (
@@ -2151,7 +2151,7 @@ function TabResources({ resources, setResources, now, incident, setIncident, par
                 return (
                   <div style={{ textAlign: "center", padding: "2px 4px" }}>
                     <div style={{ fontSize: 10, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Next PAR Due</div>
-                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: COLORS.faint }}>N/A for this incident type</div>
+                    <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, color: COLORS.faint }}>N/A for this incident type</div>
                   </div>
                 );
               }
@@ -2166,7 +2166,7 @@ function TabResources({ resources, setResources, now, incident, setIncident, par
                 return (
                   <div style={{ textAlign: "center", padding: "2px 4px" }}>
                     <div style={{ fontSize: 10, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Next PAR Due</div>
-                    <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: COLORS.faint }}>Clock stopped</div>
+                    <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, color: COLORS.faint }}>Clock stopped</div>
                   </div>
                 );
               }
@@ -2183,7 +2183,7 @@ function TabResources({ resources, setResources, now, incident, setIncident, par
               return (
                 <div style={{ textAlign: "center", padding: "2px 4px" }}>
                   <div style={{ fontSize: 10, color: COLORS.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Next PAR Due</div>
-                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 19, fontWeight: 700, color: isOverdue ? COLORS.red : COLORS.text }}>
+                  <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color: isOverdue ? COLORS.red : COLORS.text }}>
                     {parBaseline ? (isOverdue ? "OVERDUE" : fmtDuration(remainingMs)) : "—"}
                   </div>
                 </div>
@@ -2232,7 +2232,7 @@ function TabResources({ resources, setResources, now, incident, setIncident, par
                   <span {...colDragHandleProps} title="Drag to reorder columns" style={{ ...colDragHandleProps.style, color: COLORS.faint, display: "flex" }}><GripHorizontal size={14} /></span>
                   <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 12.5 }}>{col}</span>
                 </span>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: COLORS.muted }}>{items.length}</span>
+                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, color: COLORS.muted }}>{items.length}</span>
               </div>
               {items.length === 0 && <div style={{ fontSize: 12, color: COLORS.faint, padding: "10px 2px" }}>No resources</div>}
               {items.map(r => (
@@ -2257,7 +2257,7 @@ function TabResources({ resources, setResources, now, incident, setIncident, par
           background: COLORS.panel2, border: `2px solid ${STATUS_COLOR[draggingResource.status]}`, borderRadius: 5,
           padding: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
         }}>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 13 }}>{draggingResource.label}</div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13 }}>{draggingResource.label}</div>
           <div style={{ fontSize: 10.5, color: COLORS.muted }}>{draggingResource.kind}</div>
         </div>
       )}
@@ -3209,7 +3209,7 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
                   return (
                     <div key={name} onPointerDown={startDivisionDrag(name)}
                       style={{ background: COLORS.panel2, border: `1.5px solid ${color}`, borderRadius: 5, padding: "5px 10px", fontFamily: "'Oswald', sans-serif", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.03em", cursor: "grab", touchAction: "none", userSelect: "none" }}>
-                      {name} <span style={{ color: COLORS.muted, fontFamily: "'IBM Plex Sans', sans-serif", textTransform: "none", letterSpacing: 0 }}>({count})</span>
+                      {name} <span style={{ color: COLORS.muted, fontFamily: "'Oswald', sans-serif", textTransform: "none", letterSpacing: 0 }}>({count})</span>
                     </div>
                   );
                 })}
@@ -3237,7 +3237,7 @@ function TabMapping({ mapData, setMapData, resources, assignmentPresets, resourc
               style={{
                 position: "absolute", left: 10, bottom: 10, zIndex: 900,
                 background: "rgba(20,23,26,0.9)", color: "#EDEFF1", border: `1px solid ${COLORS.line}`,
-                borderRadius: 6, padding: "6px 10px", fontFamily: "'IBM Plex Mono', monospace", fontSize: 12,
+                borderRadius: 6, padding: "6px 10px", fontFamily: "'Oswald', sans-serif", fontSize: 12,
                 cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 8,
               }}
             >
@@ -3764,7 +3764,7 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
               </div>
               {showHeatIndex && (
                 <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", marginBottom: 8 }}>
                     NWS Heat Index Chart
                   </div>
                   <HeatIndexMatrix currentTemp={temp} currentRh={rh} exactHeatIndex={heatIndex} />
@@ -3805,7 +3805,7 @@ function TabWeather({ scrollRequest, stickyHeaderRef }) {
             range instead without breaking those. */}
         <div ref={containerRef} style={{ width: "100%", height: "60vh", minHeight: 380, borderRadius: 6, border: `1px solid ${COLORS.line}`, position: "relative", zIndex: 0 }} />
         {activeFrame && (
-          <div style={{ fontSize: 11.5, color: COLORS.faint, marginTop: 6, fontFamily: "'IBM Plex Mono', monospace" }}>
+          <div style={{ fontSize: 11.5, color: COLORS.faint, marginTop: 6, fontFamily: "'Oswald', sans-serif" }}>
             Frame: {new Date(activeFrame.time * 1000).toLocaleTimeString()}
           </div>
         )}
@@ -4014,7 +4014,7 @@ function TabComms({ comms, setComms, incident, setIncident }) {
 
       <Panel title="4. Basic Radio Channel Use" icon={Radio} right={<Btn kind="subtle" icon={Plus} onClick={addRow}>Add Channel</Btn>}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'Oswald', sans-serif" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${COLORS.line}`, color: COLORS.muted, textTransform: "uppercase", fontSize: 10.5, letterSpacing: "0.05em" }}>
                 <th style={cell}>Zone/Grp</th><th style={cell}>Ch#</th><th style={cell}>Function</th><th style={cell}>Channel Name / Talkgroup</th>
@@ -4116,7 +4116,7 @@ function TabRehab({ rehab, setRehab, resources, now }) {
               <div style={{ fontWeight: 600, fontSize: 14 }}>{r.name || "(unnamed)"}</div>
               <div style={{ fontSize: 12, color: COLORS.muted }}>{r.unit || "-"}</div>
             </div>
-            <div style={{ textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: COLORS.faint, lineHeight: 1.5 }}>
+            <div style={{ textAlign: "right", fontFamily: "'Oswald', sans-serif", fontSize: 11.5, color: COLORS.faint, lineHeight: 1.5 }}>
               <div>In: {fmtTime(r.timeIn)}</div>
               <div>{elapsed(r.timeIn, r.timeCleared ? new Date(r.timeCleared).getTime() : now)} elapsed</div>
               {r.timeCleared && <div>Cleared: {fmtTime(r.timeCleared)}</div>}
@@ -4172,11 +4172,11 @@ function TabRehab({ rehab, setRehab, resources, now }) {
                   {["In Rehab", "Cleared", "Transported"].map(s => <option key={s}>{s}</option>)}
                 </Select>
               </Field>
-              <div style={{ fontSize: 12, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace" }}>
+              <div style={{ fontSize: 12, color: COLORS.faint, fontFamily: "'Oswald', sans-serif" }}>
                 Check-In: {fmtTime(openEntry.timeIn)} · {elapsed(openEntry.timeIn, openEntry.timeCleared ? new Date(openEntry.timeCleared).getTime() : now)} elapsed
               </div>
               {openEntry.timeCleared && (
-                <div style={{ fontSize: 12, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace" }}>Check-Out: {fmtTime(openEntry.timeCleared)}</div>
+                <div style={{ fontSize: 12, color: COLORS.faint, fontFamily: "'Oswald', sans-serif" }}>Check-Out: {fmtTime(openEntry.timeCleared)}</div>
               )}
               {openEntry.status === "In Rehab" && (
                 <Btn kind="subtle" icon={CheckCircle2} onClick={() => clear(openEntry.id)} style={{ justifyContent: "center" }}>Clear</Btn>
@@ -4227,7 +4227,7 @@ function Tab208({ ics208, setIcs208, incident, setIncident }) {
         </Field>
         <Field label="Approved Site Safety Plan(s) Located At"><TextInput value={ics208.siteSafetyPlanLocation} onChange={e => set({ siteSafetyPlanLocation: e.target.value })} /></Field>
       </div>
-      <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "18px 0 8px" }}>5. Prepared By</div>
+      <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "18px 0 8px" }}>5. Prepared By</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
         <Field label="Name"><TextInput value={ics208.preparedBy} onChange={e => set({ preparedBy: e.target.value })} /></Field>
         <Field label="Position / Title"><TextInput value={ics208.position} onChange={e => set({ position: e.target.value })} placeholder="Safety Officer" /></Field>
@@ -4316,7 +4316,7 @@ function Tab208HM({ ics208hm, setIcs208hm, incident, setIncident, mapData }) {
           <Field label="Other"><TextInput value={ics208hm.orgOther2} onChange={e => set({ orgOther2: e.target.value })} /></Field>
         </div>
 
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "16px 0 8px" }}>Entry Team (Buddy System)</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "16px 0 8px" }}>Entry Team (Buddy System)</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           {ics208hm.entryTeam.map(m => (
             <div key={m.id}>
@@ -4326,7 +4326,7 @@ function Tab208HM({ ics208hm, setIcs208hm, incident, setIncident, mapData }) {
           ))}
         </div>
 
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "16px 0 8px" }}>Decontamination Element</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "16px 0 8px" }}>Decontamination Element</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           {ics208hm.deconTeam.map(m => (
             <div key={m.id}>
@@ -4601,7 +4601,7 @@ function Tab209({ ics209, setIcs209, incident, setIncident, mapData }) {
         <Field label="Significant Events for the Time Period Reported" wide><TextArea value={ics209.significantEvents} onChange={e => set({ significantEvents: e.target.value })} style={{ minHeight: 70 }} /></Field>
         <Field label="Primary Materials or Hazards Involved" wide><TextInput value={ics209.primaryMaterials} onChange={e => set({ primaryMaterials: e.target.value })} style={{ marginTop: 12 }} /></Field>
 
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "16px 0 8px" }}>Damage Assessment — Structural Summary</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "16px 0 8px" }}>Damage Assessment — Structural Summary</div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr style={{ borderBottom: `1px solid ${COLORS.line}`, color: COLORS.muted, textTransform: "uppercase", fontSize: 10.5 }}>
@@ -4669,7 +4669,7 @@ function Tab209({ ics209, setIcs209, incident, setIncident, mapData }) {
 
       <Panel title="Life, Safety, and Health" icon={AlertTriangle}>
         <Field label="Status/Threat Remarks" wide><TextArea value={ics209.threatRemarks} onChange={e => set({ threatRemarks: e.target.value })} style={{ minHeight: 60 }} /></Field>
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "16px 0 8px" }}>Threat Management (check if active)</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "16px 0 8px" }}>Threat Management (check if active)</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
           {THREAT_FLAG_OPTIONS.map(([key, label]) => (
             <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
@@ -4952,7 +4952,7 @@ function Tab201Full({ incident, setIncident, org, objectivesByType, onAddObjecti
             <TextArea value={incident.situation} onChange={e => setIncident({ ...incident, situation: e.target.value })} style={{ minHeight: 90 }} />
           </Field>
         </div>
-        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "18px 0 8px" }}>6. Prepared By</div>
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "18px 0 8px" }}>6. Prepared By</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
           <Field label="Name"><TextInput value={incident.preparedBy} onChange={e => setIncident({ ...incident, preparedBy: e.target.value })} /></Field>
           <Field label="Position / Title"><TextInput value={incident.prepPosition} onChange={e => setIncident({ ...incident, prepPosition: e.target.value })} /></Field>
@@ -4969,7 +4969,7 @@ function Tab201Full({ incident, setIncident, org, objectivesByType, onAddObjecti
             const isNewObjective = o.trim() && !relevantObjectives.includes(o.trim());
             return (
               <div key={i} style={{ display: "flex", gap: 8 }}>
-                <span style={{ width: 22, textAlign: "right", color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, paddingTop: 9 }}>{i + 1}.</span>
+                <span style={{ width: 22, textAlign: "right", color: COLORS.faint, fontFamily: "'Oswald', sans-serif", fontSize: 13, paddingTop: 9 }}>{i + 1}.</span>
                 <TextInput list="objective-presets" value={o} onChange={e => updateObjective(i, e.target.value)} style={{ flex: 1 }} placeholder="Objective..." />
                 {isNewObjective && (
                   <button onClick={() => onAddObjective(incident.type, o.trim())} title={`Save as a quick-pick objective for ${incident.type || "this type"}`} style={{ background: COLORS.panel2, border: `1px solid ${COLORS.line}`, borderRadius: 4, color: COLORS.amber, cursor: "pointer", padding: "0 8px" }}>
@@ -5296,7 +5296,7 @@ function Tab214({ logs, setLogs, incident, setIncident }) {
           </div>
           {log && (
             <div>
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Operational Period</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Operational Period</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
                 <Field label="Date / Time From"><TextInput type="datetime-local" value={log.opFrom} onChange={e => updateLog(log.id, { opFrom: e.target.value })} /></Field>
                 <Field label="Date / Time To"><TextInput type="datetime-local" value={log.opTo} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
@@ -5309,7 +5309,7 @@ function Tab214({ logs, setLogs, incident, setIncident }) {
                 <div style={{ display: "flex", alignItems: "end" }}><Btn kind="danger" icon={Trash2} onClick={() => removeLog(log.id)}>Delete Log</Btn></div>
               </div>
 
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Resources Assigned</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Resources Assigned</div>
               <Btn kind="subtle" icon={Plus} onClick={() => addResource(log.id)} style={{ marginBottom: 10 }}>Add Resource</Btn>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
                 {(log.resourcesAssigned || []).length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No resources assigned yet.</div>}
@@ -5323,7 +5323,7 @@ function Tab214({ logs, setLogs, incident, setIncident }) {
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Activity Log</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Activity Log</div>
               <Btn kind="subtle" icon={Plus} onClick={() => addEntry(log.id)} style={{ marginBottom: 10 }}>Add Entry</Btn>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {log.entries.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No entries logged.</div>}
@@ -5335,14 +5335,14 @@ function Tab214({ logs, setLogs, incident, setIncident }) {
                         const d = new Date(e.time); d.setHours(h || 0, m || 0, s || 0);
                         updateEntry(log.id, e.id, { time: d.toISOString() });
                       }}
-                      style={{ width: 110, fontFamily: "'IBM Plex Mono', monospace" }} />
+                      style={{ width: 110, fontFamily: "'Oswald', sans-serif" }} />
                     <TextInput value={e.text} onChange={ev => updateEntry(log.id, e.id, { text: ev.target.value })} placeholder="Notable activity..." style={{ flex: 1 }} />
                     <button onClick={() => removeEntry(log.id, e.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer", paddingTop: 8 }}><Trash2 size={14} /></button>
                   </div>
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "20px 0 8px" }}>Prepared By</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "20px 0 8px" }}>Prepared By</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
                 <Field label="Name"><TextInput value={log.preparedByName} onChange={e => updateLog(log.id, { preparedByName: e.target.value })} placeholder={log.name || "Name"} /></Field>
                 <Field label="Position / Title"><TextInput value={log.preparedByPosition} onChange={e => updateLog(log.id, { preparedByPosition: e.target.value })} placeholder={log.position || "Position / Title"} /></Field>
@@ -5437,7 +5437,7 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
           </div>
           {log && (
             <div>
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Operational Period</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Operational Period</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
                 <Field label="Date / Time From"><TextInput type="datetime-local" value={log.opFrom} onChange={e => updateLog(log.id, { opFrom: e.target.value })} /></Field>
                 <Field label="Date / Time To"><TextInput type="datetime-local" value={log.opTo} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
@@ -5456,7 +5456,7 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
                 <Field label="Hotel Name"><TextInput value={log.hotelName} onChange={e => updateLog(log.id, { hotelName: e.target.value })} placeholder="Lodging facility used for rehab" /></Field>
               </div>
 
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Resources Assigned</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Resources Assigned</div>
               <Btn kind="subtle" icon={Plus} onClick={() => addResource(log.id)} style={{ marginBottom: 10 }}>Add Resource</Btn>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
                 {(log.resourcesAssigned || []).length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No resources assigned yet.</div>}
@@ -5471,7 +5471,7 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Activity Log</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Activity Log</div>
               <Btn kind="subtle" icon={Plus} onClick={() => addEntry(log.id)} style={{ marginBottom: 10 }}>Add Entry</Btn>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {log.entries.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No entries logged.</div>}
@@ -5482,14 +5482,14 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
                         if (!ev.target.value) return;
                         updateEntry(log.id, e.id, { time: new Date(ev.target.value).toISOString() });
                       }}
-                      style={{ width: 190, fontFamily: "'IBM Plex Mono', monospace" }} />
+                      style={{ width: 190, fontFamily: "'Oswald', sans-serif" }} />
                     <TextInput value={e.text} onChange={ev => updateEntry(log.id, e.id, { text: ev.target.value })} placeholder="Notable activity..." style={{ flex: 1 }} />
                     <button onClick={() => removeEntry(log.id, e.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer", paddingTop: 8 }}><Trash2 size={14} /></button>
                   </div>
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "20px 0 8px" }}>Prepared and Signed By</div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "20px 0 8px" }}>Prepared and Signed By</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
                 <Field label="Name"><TextInput value={log.preparedByName} onChange={e => updateLog(log.id, { preparedByName: e.target.value })} placeholder={log.name || "Name"} /></Field>
                 <Field label="Position / Title"><TextInput value={log.preparedByPosition} onChange={e => updateLog(log.id, { preparedByPosition: e.target.value })} placeholder={log.position || "Position / Title"} /></Field>
@@ -5532,7 +5532,7 @@ function Tab215A({ safety, setSafety, org, incident, setIncident }) {
         <Field label="Incident Number"><TextInput value={incident.number} disabled style={{ opacity: 0.65 }} /></Field>
       </div>
 
-      <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "16px 0 8px" }}>Operational Period</div>
+      <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "16px 0 8px" }}>Operational Period</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
         <Field label="Date / Time From"><TextInput type="datetime-local" value={safety.opFrom} onChange={e => setSafety({ ...safety, opFrom: e.target.value })} /></Field>
         <Field label="Date / Time To"><TextInput type="datetime-local" value={safety.opTo} onChange={e => setSafety({ ...safety, opTo: e.target.value })} /></Field>
@@ -5568,7 +5568,7 @@ function Tab215A({ safety, setSafety, org, incident, setIncident }) {
         {safety.rows.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint, padding: "10px 2px" }}>No hazards logged yet. Add one per Division/Group as the risk assessment develops.</div>}
       </div>
 
-      <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "20px 0 8px" }}>Prepared By (Safety Officer)</div>
+      <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "20px 0 8px" }}>Prepared By (Safety Officer)</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
         <Field label="Name"><TextInput value={safety.preparedBy} onChange={e => setSafety({ ...safety, preparedBy: e.target.value })} placeholder={org.commandStaff.find(c => c.title === "Safety Officer")?.name || "Name"} /></Field>
         <Field label="Position / Title"><TextInput value={safety.position} onChange={e => setSafety({ ...safety, position: e.target.value })} placeholder="Safety Officer" /></Field>
@@ -6865,7 +6865,7 @@ async function downloadPacketPdf(data) {
 
 function PrintView({ incident, resources, comms, org, safety, logs }) {
   return (
-    <div className="print-only" style={{ color: "#111", background: "#fff", padding: 24, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div className="print-only" style={{ color: "#111", background: "#fff", padding: 24, fontFamily: "'Oswald', sans-serif" }}>
       <h1 style={{ fontFamily: "'Oswald', sans-serif" }}>ICS-201 · Incident Briefing</h1>
       <p><b>Incident:</b> {incident.name} &nbsp; <b>#</b> {incident.number} &nbsp; <b>Type:</b> {incident.type}</p>
       <p><b>Location:</b> {incident.location}</p>
@@ -7750,7 +7750,7 @@ const TABS = [
 function GlobalStyles() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap');
       ${THEME_CSS}
       * { box-sizing: border-box; }
       html {
@@ -8007,14 +8007,14 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
 
   if (!ready) {
     return (
-      <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.muted, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.muted, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Oswald', sans-serif" }}>
         Loading…
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'Oswald', sans-serif" }}>
       <div style={{ borderBottom: `1px solid ${COLORS.line}`, background: COLORS.panel, position: "sticky", top: 0, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -8025,7 +8025,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
-            <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", display: "flex", alignItems: "center", gap: 5, visibility: saveState === "idle" ? "hidden" : "visible" }}>
+            <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'Oswald', sans-serif", display: "flex", alignItems: "center", gap: 5, visibility: saveState === "idle" ? "hidden" : "visible" }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: saveState === "saving" ? COLORS.amber : COLORS.teal, transition: "background-color 0.15s" }} />
               {saveState === "synced" ? "Updated elsewhere" : "Synced"}
             </span>
@@ -9050,7 +9050,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const effectiveNow = incident.opEnd ? new Date(incident.opEnd).getTime() : now;
 
   return (
-    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'Oswald', sans-serif" }}>
       {incidentLoaded && (
         <div className="no-print">
         {/* HEADER */}
@@ -9075,18 +9075,18 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
                   move there) — how long the incident's been running
                   is glanceable, always-relevant status, not an
                   occasional action someone navigates to check. */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: COLORS.amber }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "'Oswald', sans-serif", fontSize: 13, color: COLORS.amber }}>
                 <Clock size={14} />
                 {fmtDuration((incident.pausedElapsedMs || 0) + (incident.opEnd ? 0 : Math.max(0, now - new Date(incident.opStart).getTime())))}
                 {incident.opEnd && <span style={{ color: COLORS.faint, fontSize: 10, marginLeft: 2 }}>STOPPED</span>}
               </div>
               {!online && (
-                <span style={{ fontSize: 11, color: COLORS.amber, fontFamily: "'IBM Plex Mono', monospace", display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 11, color: COLORS.amber, fontFamily: "'Oswald', sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: COLORS.amber, display: "inline-block" }} />
                   offline — changes will sync when reconnected
                 </span>
               )}
-              <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", display: "flex", alignItems: "center", gap: 5, visibility: saveState === "idle" ? "hidden" : "visible" }}>
+              <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'Oswald', sans-serif", display: "flex", alignItems: "center", gap: 5, visibility: saveState === "idle" ? "hidden" : "visible" }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: saveState === "saving" ? COLORS.amber : COLORS.teal, transition: "background-color 0.15s" }} />
                 Synced
               </span>
@@ -9165,7 +9165,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
                   background: "transparent", border: "none", cursor: "pointer",
                   color: tab === t.k ? COLORS.text : COLORS.muted,
                   borderBottom: tab === t.k ? `2px solid ${COLORS.red}` : `2px solid transparent`,
-                  fontSize: 13, fontWeight: 600, fontFamily: "'IBM Plex Sans', sans-serif", whiteSpace: "nowrap",
+                  fontSize: 13, fontWeight: 600, fontFamily: "'Oswald', sans-serif", whiteSpace: "nowrap",
                 }}>
                   <t.icon size={14} /> {t.label}
                 </button>
@@ -9208,7 +9208,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
               ].map(opt => (
                 <button key={opt.target}
                   onClick={() => { if (tab !== "weather") skipNextScrollTopRef.current = true; setTab("weather"); setWeatherDropdownPos(null); setWeatherScrollRequest({ target: opt.target, nonce: Date.now() }); }}
-                  style={{ background: "transparent", border: "none", color: COLORS.text, cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 4, fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif" }}
+                  style={{ background: "transparent", border: "none", color: COLORS.text, cursor: "pointer", textAlign: "left", padding: "8px 10px", borderRadius: 4, fontSize: 13, fontFamily: "'Oswald', sans-serif" }}
                   onMouseEnter={e => e.currentTarget.style.background = COLORS.panel2}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   {opt.label}
@@ -9267,7 +9267,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
       )}
 
       {!ready && (
-        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.muted, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: COLORS.muted, fontFamily: "'Oswald', sans-serif" }}>
           Loading…
         </div>
       )}
