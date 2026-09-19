@@ -663,19 +663,25 @@ function fmtLogDateTime(iso) {
 // form here exporting "this form's current data," not a batch of
 // everything the incident has.
 export function mapIcs214Fields(incident, log) {
+  const from = splitDateTimeLocal(log.opFrom);
+  const to = splitDateTimeLocal(log.opTo);
+  const prepared = splitDateTimeLocal(log.dateTime);
+  const preparedCombined = prepared.date && prepared.time ? `${prepared.date} ${prepared.time}` : prepared.date;
+  // Falls back to the log's own Name/Position if a distinct preparer
+  // wasn't explicitly entered — matches the UI's own placeholder
+  // suggestion (see Tab214's "Prepared By" fields), since the person
+  // keeping the log is very often also the one who prepared it, but
+  // isn't required to be.
+  const preparedName = log.preparedByName || log.name;
+  const preparedPosition = log.preparedByPosition || log.position;
+
   const textFields = {
     "1 Incident Name_19": incident.name,
     "1 Incident Name_20": incident.name,
     "3 Name": log.name, "4 ICS Position": log.position, "5 Home Agency and Unit": log.agency,
-    // This app has no dedicated "prepared by" name/position separate
-    // from the log's own — the person keeping an activity log IS the
-    // one preparing it, so its own Name/Position are reused for
-    // Section 8 on both pages rather than left blank. Signature and a
-    // prepared date/time aren't collected anywhere for a log (only
-    // each entry's own timestamp is), so those stay blank rather than
-    // fabricated.
-    "8 Prepared by Name": log.name, "PositionTitle_15": log.position,
-    "8 Prepared by Name_2": log.name, "PositionTitle_16": log.position,
+    "8 Prepared by Name": preparedName, "PositionTitle_15": preparedPosition,
+    "8 Prepared by Name_2": preparedName, "PositionTitle_16": preparedPosition,
+    "DateTime_15": preparedCombined, "DateTime_16": preparedCombined,
   };
 
   // Resources Assigned (Section 6) — 8 rows fit on the template's
@@ -727,11 +733,21 @@ export function mapIcs214Fields(incident, log) {
     // observed clipping in testing), so both instances get a smaller
     // explicit size rather than leaving it to the field's own default.
     fontSizes: { "PositionTitle_15": 7, "PositionTitle_16": 7 },
-    // Signature_21 (page 1) / Signature_22 (page 2) are PDF signature
-    // fields — left undrawn here since this app never collects a
-    // signature for an activity log, rather than fabricating one from
-    // the log's own name.
-    overlayTexts: [],
+    // "2. Operational Period" (Date/Time From/To) has no fillable
+    // form field at all in this template — same situation as ICS-201's
+    // header (see mapIcs201Fields) — confirmed by its absence from the
+    // template's own field list, not assumed. Coordinates below came
+    // from the template's own "Date From:"/"Date To:"/"Time From:"/
+    // "Time To:" label positions. Signature_21 (page 1) / Signature_22
+    // (page 2) are real PDF signature fields, drawn the same way.
+    overlayTexts: [
+      { page: 1, rect: [408, 721.0, 465, 730.9], text: from.date, fontSize: 8 },
+      { page: 1, rect: [510, 721.0, 572, 730.9], text: to.date, fontSize: 8 },
+      { page: 1, rect: [409, 705.4, 465, 715.3], text: from.time, fontSize: 8 },
+      { page: 1, rect: [511, 705.4, 572, 715.3], text: to.time, fontSize: 8 },
+      { page: 1, rect: [469.56, 79.2, 570.48, 92.4], text: log.signature, fontSize: 9 },
+      { page: 2, rect: [469.56, 79.8, 570.48, 93], text: log.signature, fontSize: 9 },
+    ],
     truncatedEntryCount: Math.max(0, chronological.length - MAX_ENTRIES),
     truncatedResourceCount: Math.max(0, (log.resourcesAssigned || []).length - RESOURCES_MAX),
   };
@@ -779,5 +795,87 @@ export function mapIcs215AFields(incident, safety) {
       { page: 1, rect: [424.68, 98.88, 571.08, 110.88], text: safety.signature, fontSize: 9 },
     ],
     truncatedRowCount: Math.max(0, safety.rows.length - MAX_ROWS),
+  };
+}
+
+// Splits a full ISO timestamp into separate Date ("MM/DD") and Time
+// ("HH:MM") strings — this EMTF variant's Activity Log has two
+// separate columns for these, unlike the standard ICS-214's combined
+// column (see fmtLogDateTime above).
+function splitLogDateTime(iso) {
+  if (!iso) return { date: "", time: "" };
+  const d = new Date(iso);
+  if (isNaN(d)) return { date: "", time: "" };
+  const date = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return { date, time };
+}
+
+// Maps one EMTF activity log (see Tab214EMTF) onto the custom
+// fillable ics-214-emtf.pdf built for this app — there is no official
+// fillable PDF for this TX EMTF variant (the source was a blank Word
+// template), so every field on that PDF, and its coordinates, were
+// authored from scratch rather than discovered in an existing
+// template's field list. Its page 1 has capacity for 8 resources and
+// 10 activity-log rows; pages 2 and 3 each add 36 more activity-log
+// rows (82 total).
+export function mapIcs214EMTFFields(incident, log) {
+  const from = splitDateTimeLocal(log.opFrom);
+  const to = splitDateTimeLocal(log.opTo);
+  const prepared = splitDateTimeLocal(log.dateTime);
+  const preparedCombined = prepared.date && prepared.time ? `${prepared.date} ${prepared.time}` : prepared.date;
+  const preparedName = log.preparedByName || log.name;
+  const preparedPosition = log.preparedByPosition || log.position;
+
+  const textFields = {
+    emtf_incidentName: incident.name, emtf_p2_incidentName: incident.name, emtf_p3_incidentName: incident.name,
+    emtf_dateFrom: from.date, emtf_p2_dateFrom: from.date, emtf_p3_dateFrom: from.date,
+    emtf_dateTo: to.date, emtf_p2_dateTo: to.date, emtf_p3_dateTo: to.date,
+    emtf_timeFrom: from.time, emtf_p2_timeFrom: from.time, emtf_p3_timeFrom: from.time,
+    emtf_timeTo: to.time, emtf_p2_timeTo: to.time, emtf_p3_timeTo: to.time,
+    emtf_name: log.name, emtf_position: log.position, emtf_agency: log.agency,
+    emtf_homeAgencyUnitCallSign: log.homeAgencyUnitCallSign, emtf_vehicleMileage: log.vehicleMileage, emtf_hotelName: log.hotelName,
+    emtf_preparedName: preparedName, emtf_preparedPosition: preparedPosition, emtf_preparedDateTime: preparedCombined,
+    emtf_p2_preparedName: preparedName, emtf_p2_preparedPosition: preparedPosition, emtf_p2_preparedDateTime: preparedCombined,
+    emtf_p3_preparedName: preparedName, emtf_p3_preparedPosition: preparedPosition, emtf_p3_preparedDateTime: preparedCombined,
+    // No separate "Signature" line exists on this form (unlike the
+    // standard ICS-214) — just Name/Position/Title/Date-Time under
+    // "10. Prepared and Signed by" — so log.signature has nowhere to
+    // go here and is intentionally not mapped to anything.
+  };
+
+  const RESOURCES_MAX = 8;
+  (log.resourcesAssigned || []).slice(0, RESOURCES_MAX).forEach((r, i) => {
+    const n = i + 1;
+    textFields[`emtf_resource_name_${n}`] = r.name;
+    textFields[`emtf_resource_icsPosition_${n}`] = r.icsPosition;
+    textFields[`emtf_resource_homeAgency_${n}`] = r.homeAgency;
+    textFields[`emtf_resource_hotelRoom_${n}`] = r.hotelRoom;
+  });
+
+  // Chronological, oldest-first — same reasoning as the standard
+  // ICS-214 export: this app stores entries newest-first for easy
+  // access while actively logging, but a finished log reads naturally
+  // oldest-first, matching the paper form's row order.
+  const chronological = [...(log.entries || [])].reverse();
+  const PAGE_CAPACITY = [10, 36, 36]; // page 1, page 2, page 3
+  const MAX_ENTRIES = PAGE_CAPACITY.reduce((a, b) => a + b, 0);
+  const fieldNamesFor = (n) => {
+    if (n <= 10) return { prefix: "emtf_p1_activity", row: n };
+    if (n <= 46) return { prefix: "emtf_p2_activity", row: n - 10 };
+    return { prefix: "emtf_p3_activity", row: n - 46 };
+  };
+  chronological.slice(0, MAX_ENTRIES).forEach((entry, i) => {
+    const { prefix, row } = fieldNamesFor(i + 1);
+    const { date, time } = splitLogDateTime(entry.time);
+    textFields[`${prefix}_date_${row}`] = date;
+    textFields[`${prefix}_time_${row}`] = time;
+    textFields[`${prefix}_text_${row}`] = entry.text;
+  });
+
+  return {
+    textFields,
+    truncatedEntryCount: Math.max(0, chronological.length - MAX_ENTRIES),
+    truncatedResourceCount: Math.max(0, (log.resourcesAssigned || []).length - RESOURCES_MAX),
   };
 }

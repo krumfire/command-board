@@ -18,7 +18,7 @@ import { COLORS, KFD_PATCH_DATA_URI, THEME_CSS } from "./theme";
 import PinGate, { refreshUnlockRecord } from "./PinGate.jsx";
 import { playMaydayTone, stopMaydayTone, unlockAudioContext, setupAudioResumeListeners } from "./audio";
 import { sha256 } from "./pin";
-import { fillAndDownloadIcsPdf, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields } from "./icsPdfExport";
+import { fillAndDownloadIcsPdf, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields, mapIcs214EMTFFields } from "./icsPdfExport";
 import L from "leaflet";
 import "leaflet-draw";
 import "leaflet/dist/leaflet.css";
@@ -498,6 +498,18 @@ function nowLocalDateTimeParts() {
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
 const fmtClock = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : "—";
+// Converts a full ISO timestamp (as this app's log-entry timestamps
+// store) into the "YYYY-MM-DDTHH:MM" shape an <input type="datetime-
+// local"> expects as its own value — the inverse of new Date(value)
+// used when reading such an input back out.
+function toDateTimeLocalInputValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${date}T${time}`;
+}
 // 8-point compass, matching the format the Wind field already
 // expects ("8 mph SW") rather than a finer-grained 16-point compass.
 const degreesToCompass = (deg) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((deg % 360) + 360) % 360 / 45) % 8];
@@ -5016,6 +5028,7 @@ const ICS_FORM_OPTIONS = [
   { k: "209", label: "ICS-209 · Incident Status Summary" },
   { k: "206", label: "ICS-206 · Medical Plan" },
   { k: "214", label: "ICS-214 · Activity Logs" },
+  { k: "214emtf", label: "ICS-214 EMTF" },
 ];
 
 function TabICSForms(props) {
@@ -5059,6 +5072,7 @@ function TabICSForms(props) {
       {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} mapData={props.mapData} />}
       {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} />}
       {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} />}
+      {selected === "214emtf" && <Tab214EMTF logs={props.emtfLogs} setLogs={props.setEmtfLogs} incident={props.incident} />}
     </div>
   );
 }
@@ -5209,7 +5223,7 @@ function Tab214({ logs, setLogs, incident }) {
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
   const addLog = () => {
-    const l = { id: uid(), name: "", position: "", agency: "", resourcesAssigned: [], entries: [] };
+    const l = { id: uid(), name: "", position: "", agency: "", opFrom: "", opTo: "", resourcesAssigned: [], entries: [], preparedByName: "", preparedByPosition: "", signature: "", dateTime: "" };
     setLogs([...logs, l]); setActiveLog(l.id);
   };
   const updateLog = (id, patch) => setLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
@@ -5268,6 +5282,12 @@ function Tab214({ logs, setLogs, incident }) {
           </div>
           {log && (
             <div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Operational Period</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
+                <Field label="Date / Time From"><TextInput type="datetime-local" value={log.opFrom} onChange={e => updateLog(log.id, { opFrom: e.target.value })} /></Field>
+                <Field label="Date / Time To"><TextInput type="datetime-local" value={log.opTo} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
+              </div>
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr)) auto", gap: 10, marginBottom: 14 }}>
                 <Field label="Name"><TextInput value={log.name} onChange={e => updateLog(log.id, { name: e.target.value })} /></Field>
                 <Field label="ICS Position"><TextInput value={log.position} onChange={e => updateLog(log.id, { position: e.target.value })} /></Field>
@@ -5306,6 +5326,158 @@ function Tab214({ logs, setLogs, incident }) {
                     <button onClick={() => removeEntry(log.id, e.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer", paddingTop: 8 }}><Trash2 size={14} /></button>
                   </div>
                 ))}
+              </div>
+
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "20px 0 8px" }}>Prepared By</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
+                <Field label="Name"><TextInput value={log.preparedByName} onChange={e => updateLog(log.id, { preparedByName: e.target.value })} placeholder={log.name || "Name"} /></Field>
+                <Field label="Position / Title"><TextInput value={log.preparedByPosition} onChange={e => updateLog(log.id, { preparedByPosition: e.target.value })} placeholder={log.position || "Position / Title"} /></Field>
+                <Field label="Signature"><TextInput value={log.signature} onChange={e => updateLog(log.id, { signature: e.target.value })} placeholder="Type name to sign" /></Field>
+                <Field label="Date / Time"><TextInput type="datetime-local" value={log.dateTime} onChange={e => updateLog(log.id, { dateTime: e.target.value })} /></Field>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/* ============================================================
+   TAB: ICS-214 EMTF · UNIT/ACTIVITY LOG (TX EMTF VARIANT)
+   Adapted from the standard ICS-214 above, but for Texas Emergency
+   Medical Task Force deployments specifically — several fields here
+   (Home Agency Unit Call Sign, Vehicle Mileage, Hotel Name, and a
+   per-resource Hotel/Room # column) don't exist on the standard form
+   at all, which is why this is a separate form/tab rather than a
+   variant toggle on the one above. No PDF export yet — the source for
+   this one was a blank Word template, not a fillable PDF, so there's
+   no official form to map onto the way the other ICS forms are.
+   ============================================================ */
+function Tab214EMTF({ logs, setLogs, incident }) {
+  const [activeLog, setActiveLog] = useState(logs[0]?.id || null);
+  useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
+
+  const addLog = () => {
+    const l = {
+      id: uid(), name: "", position: "", agency: "", opFrom: "", opTo: "",
+      homeAgencyUnitCallSign: "", vehicleMileage: "", hotelName: "",
+      resourcesAssigned: [], entries: [], preparedByName: "", preparedByPosition: "", signature: "", dateTime: "",
+    };
+    setLogs([...logs, l]); setActiveLog(l.id);
+  };
+  const updateLog = (id, patch) => setLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
+  const removeLog = (id) => setLogs(logs.filter(l => l.id !== id));
+  const addEntry = (id) => updateLog(id, { entries: [{ id: uid(), time: nowISO(), text: "" }, ...(logs.find(l => l.id === id)?.entries || [])] });
+  const updateEntry = (logId, entryId, patch) => {
+    const log = logs.find(l => l.id === logId);
+    updateLog(logId, { entries: log.entries.map(e => e.id === entryId ? { ...e, ...patch } : e) });
+  };
+  const removeEntry = (logId, entryId) => {
+    const log = logs.find(l => l.id === logId);
+    updateLog(logId, { entries: log.entries.filter(e => e.id !== entryId) });
+  };
+  const addResource = (id) => updateLog(id, { resourcesAssigned: [...(logs.find(l => l.id === id)?.resourcesAssigned || []), { id: uid(), name: "", icsPosition: "", homeAgency: "", hotelRoom: "" }] });
+  const updateResource = (logId, resId, patch) => {
+    const log = logs.find(l => l.id === logId);
+    updateLog(logId, { resourcesAssigned: (log.resourcesAssigned || []).map(r => r.id === resId ? { ...r, ...patch } : r) });
+  };
+  const removeResource = (logId, resId) => {
+    const log = logs.find(l => l.id === logId);
+    updateLog(logId, { resourcesAssigned: (log.resourcesAssigned || []).filter(r => r.id !== resId) });
+  };
+
+  const log = logs.find(l => l.id === activeLog);
+
+  const doExport = async () => {
+    const { textFields, truncatedEntryCount, truncatedResourceCount } = mapIcs214EMTFFields(incident, log);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-214-emtf.pdf", filename: icsFilename("ICS-214-EMTF", incident), textFields });
+    const notes = [];
+    if (truncatedResourceCount > 0) notes.push(`${truncatedResourceCount} resource(s) assigned`);
+    if (truncatedEntryCount > 0) notes.push(`${truncatedEntryCount} activity log entry/entries`);
+    if (notes.length > 0) return `Form only fits so many rows per section — left off: ${notes.join(", ")}.`;
+  };
+
+  return (
+    <Panel title="ICS-214 EMTF · Unit / Activity Log (TX EMTF)" icon={ClipboardList} right={
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {log && <ExportPdfButton onExport={doExport} />}
+        <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>
+      </div>
+    }>
+      {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
+      {logs.length > 0 && (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {logs.map(l => (
+              <button key={l.id} onClick={() => setActiveLog(l.id)} style={{
+                padding: "6px 11px", borderRadius: 4, fontSize: 12.5, cursor: "pointer",
+                background: activeLog === l.id ? COLORS.red : COLORS.panel2,
+                color: activeLog === l.id ? "#fff" : COLORS.text,
+                border: `1px solid ${activeLog === l.id ? COLORS.red : COLORS.line}`,
+              }}>{l.name || l.position || "Untitled Log"}</button>
+            ))}
+          </div>
+          {log && (
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Operational Period</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
+                <Field label="Date / Time From"><TextInput type="datetime-local" value={log.opFrom} onChange={e => updateLog(log.id, { opFrom: e.target.value })} /></Field>
+                <Field label="Date / Time To"><TextInput type="datetime-local" value={log.opTo} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr)) auto", gap: 10, marginBottom: 14 }}>
+                <Field label="Name"><TextInput value={log.name} onChange={e => updateLog(log.id, { name: e.target.value })} /></Field>
+                <Field label="ICS Position / TX EMTF Role"><TextInput value={log.position} onChange={e => updateLog(log.id, { position: e.target.value })} /></Field>
+                <Field label="Home Agency (and TX EMTF Call Sign)"><TextInput value={log.agency} onChange={e => updateLog(log.id, { agency: e.target.value })} /></Field>
+                <div style={{ display: "flex", alignItems: "end" }}><Btn kind="danger" icon={Trash2} onClick={() => removeLog(log.id)}>Delete Log</Btn></div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 18 }}>
+                <Field label="Home Agency Unit Call Sign"><TextInput value={log.homeAgencyUnitCallSign} onChange={e => updateLog(log.id, { homeAgencyUnitCallSign: e.target.value })} /></Field>
+                <Field label="Current Vehicle Mileage"><TextInput value={log.vehicleMileage} onChange={e => updateLog(log.id, { vehicleMileage: e.target.value })} /></Field>
+                <Field label="Hotel Name"><TextInput value={log.hotelName} onChange={e => updateLog(log.id, { hotelName: e.target.value })} placeholder="Lodging facility used for rehab" /></Field>
+              </div>
+
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Resources Assigned</div>
+              <Btn kind="subtle" icon={Plus} onClick={() => addResource(log.id)} style={{ marginBottom: 10 }}>Add Resource</Btn>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
+                {(log.resourcesAssigned || []).length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No resources assigned yet.</div>}
+                {(log.resourcesAssigned || []).map(r => (
+                  <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "start" }}>
+                    <TextInput value={r.name} onChange={ev => updateResource(log.id, r.id, { name: ev.target.value })} placeholder="Name" style={{ flex: 1 }} />
+                    <TextInput value={r.icsPosition} onChange={ev => updateResource(log.id, r.id, { icsPosition: ev.target.value })} placeholder="ICS / TX EMTF Position" style={{ flex: 1 }} />
+                    <TextInput value={r.homeAgency} onChange={ev => updateResource(log.id, r.id, { homeAgency: ev.target.value })} placeholder="Home Agency: Unit Call Sign" style={{ flex: 1 }} />
+                    <TextInput value={r.hotelRoom} onChange={ev => updateResource(log.id, r.id, { hotelRoom: ev.target.value })} placeholder="Hotel/Rm #" style={{ width: 110 }} />
+                    <button onClick={() => removeResource(log.id, r.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer", paddingTop: 8 }}><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "4px 0 8px" }}>Activity Log</div>
+              <Btn kind="subtle" icon={Plus} onClick={() => addEntry(log.id)} style={{ marginBottom: 10 }}>Add Entry</Btn>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {log.entries.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No entries logged.</div>}
+                {log.entries.map(e => (
+                  <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "start" }}>
+                    <TextInput type="datetime-local" value={toDateTimeLocalInputValue(e.time)}
+                      onChange={ev => {
+                        if (!ev.target.value) return;
+                        updateEntry(log.id, e.id, { time: new Date(ev.target.value).toISOString() });
+                      }}
+                      style={{ width: 190, fontFamily: "'IBM Plex Mono', monospace" }} />
+                    <TextInput value={e.text} onChange={ev => updateEntry(log.id, e.id, { text: ev.target.value })} placeholder="Notable activity..." style={{ flex: 1 }} />
+                    <button onClick={() => removeEntry(log.id, e.id)} style={{ background: "none", border: "none", color: COLORS.faint, cursor: "pointer", paddingTop: 8 }}><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'IBM Plex Mono', monospace", margin: "20px 0 8px" }}>Prepared and Signed By</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
+                <Field label="Name"><TextInput value={log.preparedByName} onChange={e => updateLog(log.id, { preparedByName: e.target.value })} placeholder={log.name || "Name"} /></Field>
+                <Field label="Position / Title"><TextInput value={log.preparedByPosition} onChange={e => updateLog(log.id, { preparedByPosition: e.target.value })} placeholder={log.position || "Position / Title"} /></Field>
+                <Field label="Signature"><TextInput value={log.signature} onChange={e => updateLog(log.id, { signature: e.target.value })} placeholder="Type name to sign" /></Field>
+                <Field label="Date / Time"><TextInput type="datetime-local" value={log.dateTime} onChange={e => updateLog(log.id, { dateTime: e.target.value })} /></Field>
               </div>
             </div>
           )}
@@ -6961,7 +7133,7 @@ function ManageIncidentTypesModal({ onClose, onBack, incidentTypes, onAdd, onRen
 // ever renders. Previously, changing the admin password specifically
 // only lived inside the archive browsing flow, several steps removed
 // from where someone would naturally look for it.
-function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings }) {
+function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onSetIcsFormsPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
       <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
@@ -6972,6 +7144,7 @@ function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedP
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <Btn kind="ghost" icon={KeyRound} onClick={onChangePin} style={{ width: "100%", justifyContent: "center" }}>Change PIN</Btn>
           <Btn kind="ghost" icon={KeyRound} onClick={onSetLimitedPin} style={{ width: "100%", justifyContent: "center" }}>Set Limited-Access PIN</Btn>
+          <Btn kind="ghost" icon={KeyRound} onClick={onSetIcsFormsPin} style={{ width: "100%", justifyContent: "center" }}>Set ICS Forms PIN</Btn>
           <Btn kind="ghost" icon={Lock} onClick={onChangeAdminPassword} style={{ width: "100%", justifyContent: "center" }}>Change Admin Password</Btn>
           <Btn kind="ghost" icon={ClipboardList} onClick={onManageIncidentTypes} style={{ width: "100%", justifyContent: "center" }}>Manage Incident Types</Btn>
           <Btn kind="ghost" icon={Settings} onClick={onManageResources} style={{ width: "100%", justifyContent: "center" }}>Manage Resources</Btn>
@@ -7190,6 +7363,72 @@ function LimitedPinModal({ onClose, onBack }) {
             {error && <div style={{ color: COLORS.dangerText, fontSize: 12 }}>{error}</div>}
             <Btn kind="solid" onClick={submit} disabled={status === "saving"} style={{ justifyContent: "center" }}>
               {status === "saving" ? "Saving…" : "Save Limited-Access PIN"}
+            </Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A third, separate PIN (config.icsFormsPinHash) that skips the
+// incident library entirely and opens a standalone ICS Forms
+// workspace (see StandaloneICSForms) — for filling out and exporting
+// forms without creating a real incident record. Same shape as
+// LimitedPinModal just above; must differ from both the main and
+// limited-access PINs for the same reason (PinGate checks them in
+// order, so a collision would always resolve to the earlier one and
+// this PIN's own access level would never actually be reachable).
+function IcsFormsPinModal({ onClose, onBack }) {
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState(""); // "" | "saving" | "done"
+
+  const submit = async () => {
+    setError("");
+    if (next.length < 4) { setError("PIN must be at least 4 digits."); return; }
+    if (next !== confirm) { setError("PINs don't match."); return; }
+    setStatus("saving");
+    const cfg = await loadPinConfig();
+    const nextHash = await sha256(next);
+    if (cfg && (nextHash === cfg.pinHash || nextHash === cfg.limitedPinHash)) {
+      setStatus("");
+      setError("This PIN matches another board PIN — choose a different one.");
+      return;
+    }
+    await savePinConfig({ ...cfg, icsFormsPinHash: nextHash });
+    setStatus("done");
+    setTimeout(onClose, 900);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+      <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onBack && <button onClick={onBack} title="Back to Admin" style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><ChevronLeft size={18} /></button>}
+            <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 14 }}>ICS Forms PIN</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={16} /></button>
+        </div>
+        {status === "done" ? (
+          <div style={{ color: COLORS.teal, fontSize: 13, textAlign: "center", padding: "10px 0" }}>ICS Forms PIN saved.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 11.5, color: COLORS.muted, lineHeight: 1.5 }}>
+              Anyone who enters this PIN skips the incident library and goes straight to a standalone ICS Forms workspace — for filling out and exporting forms without creating or opening an incident. Its data is saved only on that device, not synced anywhere.
+            </div>
+            <Field label="New ICS Forms PIN">
+              <TextInput id="icsforms-pin-new" name="icsforms-pin-new" autoComplete="off" type="password" inputMode="numeric" value={next} onChange={e => setNext(e.target.value.replace(/\D/g, ""))} maxLength={12} />
+            </Field>
+            <Field label="Confirm PIN">
+              <TextInput id="icsforms-pin-confirm" name="icsforms-pin-confirm" autoComplete="off" type="password" inputMode="numeric" value={confirm} onChange={e => setConfirm(e.target.value.replace(/\D/g, ""))} maxLength={12}
+                onKeyDown={e => e.key === "Enter" && submit()} />
+            </Field>
+            {error && <div style={{ color: COLORS.dangerText, fontSize: 12 }}>{error}</div>}
+            <Btn kind="solid" onClick={submit} disabled={status === "saving"} style={{ justifyContent: "center" }}>
+              {status === "saving" ? "Saving…" : "Save ICS Forms PIN"}
             </Btn>
           </div>
         )}
@@ -7564,7 +7803,9 @@ export default function App() {
     <>
       <GlobalStyles />
       <PinGate>
-        {(lock, accessLevel) => <AppInner onLock={lock} restricted={accessLevel === "limited"} theme={theme} toggleTheme={toggleTheme} />}
+        {(lock, accessLevel) => accessLevel === "icsForms"
+          ? <StandaloneICSForms onLock={lock} theme={theme} toggleTheme={toggleTheme} />
+          : <AppInner onLock={lock} restricted={accessLevel === "limited"} theme={theme} toggleTheme={toggleTheme} />}
       </PinGate>
     </>
   );
@@ -7587,6 +7828,147 @@ function useOnlineStatus() {
     };
   }, []);
   return online;
+}
+
+// A lightweight, self-contained workspace for the ICS Forms tab that
+// bypasses the incident library entirely — unlocked with its own PIN
+// (config.icsFormsPinHash, see PinGate.jsx's "icsForms" access level
+// and AdminModal's "Set ICS Forms PIN"), for filling out and
+// exporting forms (training, practice, ad-hoc use) without creating a
+// real incident record. Its data has no incident to attach to, so
+// rather than a new Firestore schema for it, it persists to this
+// device's localStorage only — it does NOT sync across devices or
+// browsers, and clearing site data / private browsing will lose it.
+// That trade-off fits the use case (a device kept for this purpose,
+// or genuinely disposable practice runs) better than the complexity
+// of a shared, un-owned Firestore document that unrelated concurrent
+// users could stomp on with no incident ID to separate their work.
+const STANDALONE_STORAGE_KEY = "cb_standalone_ics_forms";
+function loadStandaloneState() {
+  try {
+    const raw = localStorage.getItem(STANDALONE_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* corrupt or inaccessible — fall through to blank */ }
+  return null;
+}
+function blankStandaloneSafety() {
+  return { opFrom: "", opTo: "", preparedBy: "", position: "", signature: "", dateTime: "", rows: [] };
+}
+
+function StandaloneICSForms({ onLock, theme, toggleTheme }) {
+  // Read once, on mount, as the initial value for each piece of state
+  // below — not re-read on every render.
+  const saved = useRef(loadStandaloneState()).current;
+  const [incident, setIncident] = useState(saved?.incident || blankIncident());
+  const [org, setOrg] = useState(saved?.org || blankOrg());
+  const [comms, setComms] = useState(saved?.comms || defaultComms());
+  const [safety, setSafety] = useState(saved?.safety || blankStandaloneSafety());
+  const [ics208, setIcs208] = useState({ ...defaultIcs208(), ...(saved?.ics208 || {}) });
+  const [ics208hm, setIcs208hm] = useState({ ...defaultIcs208HM(), ...(saved?.ics208hm || {}) });
+  const [ics209, setIcs209] = useState({ ...defaultIcs209(), ...(saved?.ics209 || {}) });
+  const [ics206, setIcs206] = useState({ ...defaultIcs206(), ...(saved?.ics206 || {}) });
+  const [logs, setLogs] = useState(saved?.logs || []);
+  const [emtfLogs, setEmtfLogs] = useState(saved?.emtfLogs || []);
+  const [formsUsed, setFormsUsed] = useState(saved?.formsUsed || {});
+  // Not editable here — Tab208HM/Tab209 accept a mapData prop for
+  // map-linked convenience features, but there's no real incident map
+  // in this standalone workspace for it to reflect.
+  const [mapData] = useState(defaultMapData());
+  // Objectives-by-type and incident-type presets are global, shared
+  // configuration (not tied to any one incident) already — same
+  // loadPresets/savePresets AppInner itself uses — so this reuses
+  // them directly rather than maintaining a separate copy.
+  const [presets, setPresets] = useState({ objectivesByType: {}, incidentTypes: [] });
+  const [savedFlash, setSavedFlash] = useState(false);
+  const saveTimer = useRef(null);
+
+  useEffect(() => { (async () => setPresets(await loadPresets()))(); }, []);
+
+  // Debounced local persistence — mirrors the shape of the main app's
+  // autosave effect, just writing to localStorage instead of
+  // Firestore since there's no incident id to save under.
+  useEffect(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      try {
+        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed }));
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1500);
+      } catch { /* private browsing, storage quota, etc. — data just won't persist */ }
+    }, 600);
+    return () => clearTimeout(saveTimer.current);
+  }, [incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed]);
+
+  const toggleFormUsed = (k) => setFormsUsed(prev => ({ ...prev, [k]: !prev[k] }));
+  const addObjective = (type, objective) => {
+    const trimmed = objective.trim();
+    if (!trimmed) return;
+    const current = presets.objectivesByType?.[type] || [];
+    if (current.includes(trimmed)) return;
+    const next = { ...presets, objectivesByType: { ...presets.objectivesByType, [type]: [...current, trimmed] } };
+    setPresets(next);
+    savePresets(next);
+  };
+
+  const clearAll = () => {
+    if (!window.confirm("Clear all standalone ICS forms data on this device? This can't be undone.")) return;
+    try { localStorage.removeItem(STANDALONE_STORAGE_KEY); } catch { /* ignore */ }
+    setIncident(blankIncident());
+    setOrg(blankOrg());
+    setComms(defaultComms());
+    setSafety(blankStandaloneSafety());
+    setIcs208(defaultIcs208());
+    setIcs208hm(defaultIcs208HM());
+    setIcs209(defaultIcs209());
+    setIcs206(defaultIcs206());
+    setLogs([]);
+    setEmtfLogs([]);
+    setFormsUsed({});
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'IBM Plex Sans', sans-serif" }}>
+      <div style={{ borderBottom: `1px solid ${COLORS.line}`, background: COLORS.panel, position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <img src={KFD_PATCH_DATA_URI} alt="KFD Patch" style={{ width: 34, height: 44, objectFit: "contain", flexShrink: 0 }} />
+            <div>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, letterSpacing: "0.03em", lineHeight: 1 }}>ICS FORMS</div>
+              <div style={{ fontSize: 10.5, color: COLORS.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Standalone — not tied to an incident</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
+            <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", display: "flex", alignItems: "center", gap: 5, visibility: savedFlash ? "visible" : "hidden" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: COLORS.teal, flexShrink: 0 }} />
+              Saved on this device
+            </span>
+            <Btn kind="ghost" icon={theme === "dark" ? Sun : Moon} onClick={toggleTheme}>{theme === "dark" ? "Light" : "Dark"}</Btn>
+            <Btn kind="ghost" icon={Trash2} onClick={clearAll}>Clear</Btn>
+            <Btn kind="ghost" icon={Lock} onClick={onLock}>Lock</Btn>
+          </div>
+        </div>
+      </div>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "20px" }}>
+        <TabICSForms
+          incident={incident} setIncident={setIncident}
+          org={org}
+          objectivesByType={presets.objectivesByType || {}}
+          onAddObjective={addObjective}
+          incidentTypePresets={presets.incidentTypes || []}
+          comms={comms} setComms={setComms}
+          safety={safety} setSafety={setSafety}
+          ics208={ics208} setIcs208={setIcs208}
+          ics208hm={ics208hm} setIcs208hm={setIcs208hm}
+          mapData={mapData}
+          ics209={ics209} setIcs209={setIcs209}
+          ics206={ics206} setIcs206={setIcs206}
+          logs={logs} setLogs={setLogs}
+          emtfLogs={emtfLogs} setEmtfLogs={setEmtfLogs}
+          formsUsed={formsUsed} toggleFormUsed={toggleFormUsed}
+        />
+      </div>
+    </div>
+  );
 }
 
 function AppInner({ onLock, restricted, theme, toggleTheme }) {
@@ -7620,6 +8002,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const [showLib, setShowLib] = useState(false);
   const [showChangePin, setShowChangePin] = useState(false);
   const [showLimitedPin, setShowLimitedPin] = useState(false);
+  const [showIcsFormsPin, setShowIcsFormsPin] = useState(false);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
@@ -7729,6 +8112,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const [rehab, setRehab] = useState([]);
   const [mapData, setMapData] = useState(defaultMapData());
   const [logs, setLogs] = useState([]);
+  const [emtfLogs, setEmtfLogs] = useState([]);
 
   const saveTimer = useRef(null);
   const lastKnownUpdatedAt = useRef(null);
@@ -8248,6 +8632,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
     setRehab(blob.rehab || []);
     setMapData(parseMapData(blob.mapData));
     setLogs(blob.logs || []);
+    setEmtfLogs(blob.emtfLogs || []);
     if (markSynced) lastKnownUpdatedAt.current = blob.updatedAt || null;
   }
 
@@ -8269,7 +8654,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       const updatedAt = nowISO();
-      const blob = { incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, formsUsed, mapData: JSON.stringify(mapData), updatedAt };
+      const blob = { incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, emtfLogs, formsUsed, mapData: JSON.stringify(mapData), updatedAt };
       const ok = await saveIncidentBlob(incident.id, blob);
       const meta = { id: incident.id, name: incident.name, type: incident.type, savedAt: updatedAt };
       const nextIndex = [meta, ...index.filter(i => i.id !== incident.id)];
@@ -8281,7 +8666,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
     }, 900);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, formsUsed, mapData, ready, incidentLoaded]);
+  }, [incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, emtfLogs, formsUsed, mapData, ready, incidentLoaded]);
 
   // real-time: subscribe to this incident's Firestore doc so other
   // users' changes appear here immediately, no polling needed.
@@ -8479,7 +8864,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   }, [resources, presets.assignments, resourceColumnOrder, ready, incidentLoaded]);
 
   const startNew = () => {
-    applyBlob({ incident: blankIncident(), resources: [], resourceColumnOrder: [], org: blankOrg(), comms: defaultComms(), safety: { opFrom: "", opTo: "", preparedBy: "", position: "", signature: "", dateTime: "", rows: [] }, ics208: defaultIcs208(), ics208hm: defaultIcs208HM(), ics209: defaultIcs209(), ics206: defaultIcs206(), rehab: [], logs: [], formsUsed: {}, mapData: defaultMapData() });
+    applyBlob({ incident: blankIncident(), resources: [], resourceColumnOrder: [], org: blankOrg(), comms: defaultComms(), safety: { opFrom: "", opTo: "", preparedBy: "", position: "", signature: "", dateTime: "", rows: [] }, ics208: defaultIcs208(), ics208hm: defaultIcs208HM(), ics209: defaultIcs209(), ics206: defaultIcs206(), rehab: [], logs: [], emtfLogs: [], formsUsed: {}, mapData: defaultMapData() });
     setAttachments([]);
     setIncidentLoaded(true);
     setShowLib(false);
@@ -8755,6 +9140,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
                   ics209={ics209} setIcs209={setIcs209}
                   ics206={ics206} setIcs206={setIcs206}
                   logs={logs} setLogs={setLogs}
+                  emtfLogs={emtfLogs} setEmtfLogs={setEmtfLogs}
                   mapData={mapData}
                   objectivesByType={presets.objectivesByType} onAddObjective={addObjectiveForType} incidentTypePresets={presets.incidentTypes}
                   formsUsed={formsUsed} toggleFormUsed={toggleFormUsed}
@@ -8853,6 +9239,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
           onClose={() => setShowAdminMenu(false)}
           onChangePin={() => { setShowAdminMenu(false); setShowChangePin(true); }}
           onSetLimitedPin={() => { setShowAdminMenu(false); setShowLimitedPin(true); }}
+          onSetIcsFormsPin={() => { setShowAdminMenu(false); setShowIcsFormsPin(true); }}
           onChangeAdminPassword={() => { setShowAdminMenu(false); setShowChangeArchivePassword(true); }}
           onManageIncidentTypes={() => { setShowAdminMenu(false); setShowManageIncidentTypes(true); }}
           onManageResources={() => { setShowAdminMenu(false); setManageResourcesFromAdmin(true); setShowManageResources(true); }}
@@ -8872,6 +9259,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
       )}
       {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} onBack={() => { setShowChangePin(false); setShowAdminMenu(true); }} />}
       {showLimitedPin && <LimitedPinModal onClose={() => setShowLimitedPin(false)} onBack={() => { setShowLimitedPin(false); setShowAdminMenu(true); }} />}
+      {showIcsFormsPin && <IcsFormsPinModal onClose={() => setShowIcsFormsPin(false)} onBack={() => { setShowIcsFormsPin(false); setShowAdminMenu(true); }} />}
       {showManageIncidentTypes && (
         <ManageIncidentTypesModal
           onClose={() => setShowManageIncidentTypes(false)}
