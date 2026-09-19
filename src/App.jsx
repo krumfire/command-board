@@ -3990,7 +3990,7 @@ function TabOrg({ org, setOrg, resources, assignmentPresets, resourceColumnOrder
 /* ============================================================
    TAB: COMMUNICATIONS PLAN (ICS-205)
    ============================================================ */
-function TabComms({ comms, setComms, incident }) {
+function TabComms({ comms, setComms, incident, setIncident }) {
   const addRow = () => setComms({ ...comms, rows: [...comms.rows, { id: uid(), zoneGroup: "", chNum: "", func: "Command", channelName: "", assignment: "", rxFreq: "", rxTone: "", txFreq: "", txTone: "", mode: "D", remarks: "" }] });
   const update = (id, patch) => setComms({ ...comms, rows: comms.rows.map(c => c.id === id ? { ...c, ...patch } : c) });
   const remove = (id) => setComms({ ...comms, rows: comms.rows.filter(c => c.id !== id) });
@@ -4005,7 +4005,7 @@ function TabComms({ comms, setComms, incident }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="ICS-205 · Incident Radio Communications Plan" icon={Radio} right={<ExportPdfButton onExport={doExport} />}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-          <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
+          <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
           <Field label="Date / Time Prepared"><TextInput type="datetime-local" value={comms.dateTimePrepared} onChange={e => set({ dateTimePrepared: e.target.value })} /></Field>
           <Field label="Operational Period From"><TextInput type="datetime-local" value={comms.opFrom} onChange={e => set({ opFrom: e.target.value })} /></Field>
           <Field label="Operational Period To"><TextInput type="datetime-local" value={comms.opTo} onChange={e => set({ opTo: e.target.value })} /></Field>
@@ -4197,7 +4197,7 @@ function TabRehab({ rehab, setRehab, resources, now }) {
 /* ============================================================
    TAB: ICS-208 · SAFETY MESSAGE/PLAN
    ============================================================ */
-function Tab208({ ics208, setIcs208, incident }) {
+function Tab208({ ics208, setIcs208, incident, setIncident }) {
   const set = (patch) => setIcs208({ ...ics208, ...patch });
   const doExport = async () => {
     const { textFields, checkboxFields, overlayTexts } = mapIcs208Fields(incident, ics208);
@@ -4206,7 +4206,7 @@ function Tab208({ ics208, setIcs208, incident }) {
   return (
     <Panel title="ICS-208 · Safety Message / Plan" icon={AlertTriangle} right={<ExportPdfButton onExport={doExport} />}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-        <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
+        <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
         <Field label="Date / Time Prepared"><TextInput type="datetime-local" value={ics208.dateTime} onChange={e => set({ dateTime: e.target.value })} /></Field>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginTop: 14 }}>
@@ -4246,13 +4246,13 @@ function Tab208({ ics208, setIcs208, incident }) {
 // Mapping tab, so it doesn't need retyping on either form. Acreage
 // comes from getTotalPerimeterAcres, the same figure the PDF export's
 // "Incident Perimeter" section uses.
-function IncidentSummaryStrip({ incident, mapData }) {
+function IncidentSummaryStrip({ incident, setIncident, mapData }) {
   const totalAcres = getTotalPerimeterAcres(mapData);
   const started = [incident.dateInitiated, incident.timeInitiated].filter(Boolean).join(" ");
   const roStyle = { opacity: 0.65 };
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${COLORS.line}` }}>
-      <Field label="Incident Name"><TextInput value={incident.name} disabled style={roStyle} /></Field>
+      <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
       <Field label="Incident Number"><TextInput value={incident.number} disabled style={roStyle} /></Field>
       <Field label="Incident Type"><TextInput value={incident.type} disabled style={roStyle} /></Field>
       <Field label="Location"><TextInput value={incident.location} disabled style={roStyle} /></Field>
@@ -4263,7 +4263,7 @@ function IncidentSummaryStrip({ incident, mapData }) {
   );
 }
 
-function Tab208HM({ ics208hm, setIcs208hm, incident, mapData }) {
+function Tab208HM({ ics208hm, setIcs208hm, incident, setIncident, mapData }) {
   const set = (patch) => setIcs208hm({ ...ics208hm, ...patch });
   const cell = { padding: "6px 6px", fontSize: 12.5 };
   const checkRow = { display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 };
@@ -4289,7 +4289,7 @@ function Tab208HM({ ics208hm, setIcs208hm, incident, mapData }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="ICS-208 HM · Site Safety and Control Plan" icon={AlertTriangle} right={<ExportPdfButton onExport={doExport} />}>
-        <IncidentSummaryStrip incident={incident} mapData={mapData} />
+        <IncidentSummaryStrip incident={incident} setIncident={setIncident} mapData={mapData} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
           <Field label="Date Prepared"><TextInput type="datetime-local" value={ics208hm.dateTime} onChange={e => set({ dateTime: e.target.value })} /></Field>
           <Field label="Op. Period From"><TextInput type="datetime-local" value={ics208hm.opFrom} onChange={e => set({ opFrom: e.target.value })} /></Field>
@@ -4504,7 +4504,7 @@ const STRUCTURAL_ROWS = [
 ];
 const TIMEFRAME_KEYS = [["h12", "12 Hours"], ["h24", "24 Hours"], ["h48", "48 Hours"], ["h72", "72 Hours"], ["after72", "Anticipated After 72 Hours"]];
 
-function Tab209({ ics209, setIcs209, incident, mapData }) {
+function Tab209({ ics209, setIcs209, incident, setIncident, mapData }) {
   const set = (patch) => setIcs209({ ...ics209, ...patch });
   const setNested = (group, key, field, val) => setIcs209({ ...ics209, [group]: { ...ics209[group], [key]: { ...ics209[group][key], [field]: val } } });
   const setTimeframe = (group, key, val) => setIcs209({ ...ics209, [group]: { ...ics209[group], [key]: val } });
@@ -4530,7 +4530,7 @@ function Tab209({ ics209, setIcs209, incident, mapData }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="ICS-209 · Incident Status Summary — Page 1" icon={ClipboardList} right={<ExportPdfButton onExport={doExport} />}>
-        <IncidentSummaryStrip incident={incident} mapData={mapData} />
+        <IncidentSummaryStrip incident={incident} setIncident={setIncident} mapData={mapData} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           <Field label="Report Version">
             <Select value={ics209.reportVersion} onChange={e => set({ reportVersion: e.target.value })}>
@@ -4748,7 +4748,7 @@ function Tab209({ ics209, setIcs209, incident, mapData }) {
 /* ============================================================
    TAB: ICS-206 · MEDICAL PLAN
    ============================================================ */
-function Tab206({ ics206, setIcs206, incident }) {
+function Tab206({ ics206, setIcs206, incident, setIncident }) {
   const cell = { padding: "6px 6px", fontSize: 12.5 };
   const addRow = (key, row) => setIcs206({ ...ics206, [key]: [...ics206[key], row] });
   const updateRow = (key, id, patch) => setIcs206({ ...ics206, [key]: ics206[key].map(r => r.id === id ? { ...r, ...patch } : r) });
@@ -4767,7 +4767,7 @@ function Tab206({ ics206, setIcs206, incident }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="ICS-206 · Medical Plan" icon={HeartPulse} right={<ExportPdfButton onExport={doExport} />}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-          <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
+          <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12 }}>
             <Field label="Operational Period From"><TextInput type="datetime-local" value={ics206.opFrom} onChange={e => setIcs206({ ...ics206, opFrom: e.target.value })} /></Field>
             <Field label="Operational Period To"><TextInput type="datetime-local" value={ics206.opTo} onChange={e => setIcs206({ ...ics206, opTo: e.target.value })} /></Field>
@@ -5076,14 +5076,14 @@ function TabICSForms(props) {
       </Panel>
 
       {selected === "201full" && <Tab201Full incident={props.incident} setIncident={props.setIncident} org={props.org} objectivesByType={props.objectivesByType} onAddObjective={props.onAddObjective} incidentTypePresets={props.incidentTypePresets} />}
-      {selected === "205" && <TabComms comms={props.comms} setComms={props.setComms} incident={props.incident} />}
-      {selected === "215a" && <Tab215A safety={props.safety} setSafety={props.setSafety} org={props.org} incident={props.incident} />}
-      {selected === "208" && <Tab208 ics208={props.ics208} setIcs208={props.setIcs208} incident={props.incident} />}
-      {selected === "208hm" && <Tab208HM ics208hm={props.ics208hm} setIcs208hm={props.setIcs208hm} incident={props.incident} mapData={props.mapData} />}
-      {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} mapData={props.mapData} />}
-      {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} />}
-      {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} />}
-      {selected === "214emtf" && <Tab214EMTF logs={props.emtfLogs} setLogs={props.setEmtfLogs} incident={props.incident} />}
+      {selected === "205" && <TabComms comms={props.comms} setComms={props.setComms} incident={props.incident} setIncident={props.setIncident} />}
+      {selected === "215a" && <Tab215A safety={props.safety} setSafety={props.setSafety} org={props.org} incident={props.incident} setIncident={props.setIncident} />}
+      {selected === "208" && <Tab208 ics208={props.ics208} setIcs208={props.setIcs208} incident={props.incident} setIncident={props.setIncident} />}
+      {selected === "208hm" && <Tab208HM ics208hm={props.ics208hm} setIcs208hm={props.setIcs208hm} incident={props.incident} setIncident={props.setIncident} mapData={props.mapData} />}
+      {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} setIncident={props.setIncident} mapData={props.mapData} />}
+      {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} setIncident={props.setIncident} />}
+      {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} setIncident={props.setIncident} />}
+      {selected === "214emtf" && <Tab214EMTF logs={props.emtfLogs} setLogs={props.setEmtfLogs} incident={props.incident} setIncident={props.setIncident} />}
     </div>
   );
 }
@@ -5229,7 +5229,7 @@ function TabAttachments({ attachments, onUpload, onDelete }) {
   );
 }
 
-function Tab214({ logs, setLogs, incident }) {
+function Tab214({ logs, setLogs, incident, setIncident }) {
   const [activeLog, setActiveLog] = useState(logs[0]?.id || null);
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
@@ -5278,6 +5278,9 @@ function Tab214({ logs, setLogs, incident }) {
         <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>
       </div>
     }>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
+        <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
+      </div>
       {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
       {logs.length > 0 && (
         <>
@@ -5365,7 +5368,7 @@ function Tab214({ logs, setLogs, incident }) {
    this one was a blank Word template, not a fillable PDF, so there's
    no official form to map onto the way the other ICS forms are.
    ============================================================ */
-function Tab214EMTF({ logs, setLogs, incident }) {
+function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
   const [activeLog, setActiveLog] = useState(logs[0]?.id || null);
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
@@ -5416,6 +5419,9 @@ function Tab214EMTF({ logs, setLogs, incident }) {
         <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>
       </div>
     }>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
+        <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
+      </div>
       {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
       {logs.length > 0 && (
         <>
@@ -5501,7 +5507,7 @@ function Tab214EMTF({ logs, setLogs, incident }) {
 /* ============================================================
    TAB: ICS-215A INCIDENT SAFETY ANALYSIS
    ============================================================ */
-function Tab215A({ safety, setSafety, org, incident }) {
+function Tab215A({ safety, setSafety, org, incident, setIncident }) {
   const addRow = () => setSafety({ ...safety, rows: [{ id: uid(), branch: "", division: "", hazards: "", mitigations: "" }, ...safety.rows] });
   const update = (id, patch) => setSafety({ ...safety, rows: safety.rows.map(r => r.id === id ? { ...r, ...patch } : r) });
   const remove = (id) => setSafety({ ...safety, rows: safety.rows.filter(r => r.id !== id) });
@@ -5522,7 +5528,7 @@ function Tab215A({ safety, setSafety, org, incident }) {
       </div>
     }>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-        <Field label="Incident Name"><TextInput value={incident.name} disabled style={{ opacity: 0.65 }} /></Field>
+        <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
         <Field label="Incident Number"><TextInput value={incident.number} disabled style={{ opacity: 0.65 }} /></Field>
       </div>
 
