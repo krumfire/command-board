@@ -499,6 +499,16 @@ function nowLocalDateTimeParts() {
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—";
 const fmtClock = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : "—";
+// Zero-padded "MM/DD/YYYY" for today — same shape splitDateTimeLocal
+// produces elsewhere, used to pre-fill a new activity log's Name with
+// today's date so multiple logs are distinguishable in the tab list
+// before anyone's typed an actual name (see Tab214/Tab214EMTF's
+// addLog). Still freely editable afterward — this is a starting
+// value, not a locked-in one.
+function todayMDY() {
+  const d = new Date();
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+}
 // Converts a full ISO timestamp (as this app's log-entry timestamps
 // store) into the "YYYY-MM-DDTHH:MM" shape an <input type="datetime-
 // local"> expects as its own value — the inverse of new Date(value)
@@ -5224,7 +5234,7 @@ function Tab214({ logs, setLogs, incident }) {
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
   const addLog = () => {
-    const l = { id: uid(), name: "", position: "", agency: "", opFrom: "", opTo: "", resourcesAssigned: [], entries: [], preparedByName: "", preparedByPosition: "", signature: "", dateTime: "" };
+    const l = { id: uid(), name: todayMDY(), position: "", agency: "", opFrom: "", opTo: "", resourcesAssigned: [], entries: [], preparedByName: "", preparedByPosition: "", signature: "", dateTime: "" };
     setLogs([...logs, l]); setActiveLog(l.id);
   };
   const updateLog = (id, patch) => setLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
@@ -5361,7 +5371,7 @@ function Tab214EMTF({ logs, setLogs, incident }) {
 
   const addLog = () => {
     const l = {
-      id: uid(), name: "", position: "", agency: "", opFrom: "", opTo: "",
+      id: uid(), name: todayMDY(), position: "", agency: "", opFrom: "", opTo: "",
       homeAgencyUnitCallSign: "", vehicleMileage: "", hotelName: "",
       resourcesAssigned: [], entries: [], preparedByName: "", preparedByPosition: "", signature: "", dateTime: "",
     };
@@ -7856,6 +7866,7 @@ function blankStandaloneBlob() {
 }
 
 function StandaloneICSForms({ onLock, theme, toggleTheme }) {
+  const [showMenu, setShowMenu] = useState(false);
   const [ready, setReady] = useState(false);
   const [incident, setIncident] = useState(blankIncident());
   const [org, setOrg] = useState(blankOrg());
@@ -8012,11 +8023,37 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
               <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: saveState === "saving" ? COLORS.amber : COLORS.teal, transition: "background-color 0.15s" }} />
               {saveState === "synced" ? "Updated elsewhere" : "Synced"}
             </span>
-            <Btn kind="ghost" icon={theme === "dark" ? Sun : Moon} onClick={toggleTheme}>{theme === "dark" ? "Light" : "Dark"}</Btn>
-            <Btn kind="ghost" icon={Trash2} onClick={clearAll}>Clear</Btn>
-            <Btn kind="ghost" icon={Lock} onClick={onLock}>Lock</Btn>
+            {/* Same pattern as AppInner's own header menu — a single
+                hamburger button opening a slide-out drawer, rather
+                than several buttons crowding this row directly. */}
+            <button onClick={() => setShowMenu(true)} title="Menu"
+              style={{ background: "none", border: `1px solid ${COLORS.line}`, borderRadius: 5, color: COLORS.text, cursor: "pointer", padding: "7px 9px", display: "flex", alignItems: "center" }}>
+              <Menu size={18} />
+            </button>
           </div>
         </div>
+
+        {showMenu && (
+          <div onClick={() => setShowMenu(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100 }}>
+            <style>{`@keyframes cbHeaderMenuSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+            <div onClick={e => e.stopPropagation()}
+              style={{
+                position: "absolute", top: 0, right: 0, bottom: 0, width: 280, maxWidth: "85vw",
+                background: COLORS.panel, borderLeft: `1px solid ${COLORS.line}`, boxShadow: "-4px 0 16px rgba(0,0,0,0.4)",
+                padding: 16, overflowY: "auto", animation: "cbHeaderMenuSlideIn 0.2s ease-out",
+                display: "flex", flexDirection: "column", gap: 10,
+              }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 14 }}>Menu</span>
+                <button onClick={() => setShowMenu(false)} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={18} /></button>
+              </div>
+              <Btn kind="ghost" icon={theme === "dark" ? Sun : Moon} onClick={() => { setShowMenu(false); toggleTheme(); }} style={{ width: "100%", justifyContent: "center" }}>{theme === "dark" ? "Light" : "Dark"}</Btn>
+              <Btn kind="ghost" icon={Trash2} onClick={() => { setShowMenu(false); clearAll(); }} style={{ width: "100%", justifyContent: "center" }}>Clear</Btn>
+              <Btn kind="ghost" icon={Lock} onClick={() => { setShowMenu(false); onLock(); }} style={{ width: "100%", justifyContent: "center" }}>Lock</Btn>
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "20px" }}>
         <TabICSForms
