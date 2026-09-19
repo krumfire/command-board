@@ -84,6 +84,50 @@ export async function savePinConfig(cfg) {
   await setDoc(doc(db, "icMeta", "config"), cfg, { merge: true });
 }
 
+// Standalone ICS Forms workspace — a single, well-known document
+// (icMeta/standaloneIcsForms), same pattern as config/presets above,
+// rather than one document per incident like icIncidents/{id}. There
+// is deliberately only ever one of these: it's the whole point of
+// this feature (see StandaloneICSForms in App.jsx) that a form
+// started on one device shows up when the ICS Forms PIN is entered
+// on any other device — a phone and a laptop are reading and writing
+// the exact same document, not two separate copies that need
+// reconciling. The trade-off is that everyone using the ICS Forms
+// PIN at any given time shares this one workspace, the same way
+// everyone already shares one config and one presets document.
+export async function loadStandaloneIcsFormsFresh() {
+  try {
+    const snap = await getDocFromServer(doc(db, "icMeta", "standaloneIcsForms"));
+    return snap.exists() ? snap.data() : null;
+  } catch {
+    // No connectivity for the fresh read this device needs when
+    // first opening the workspace — fall back to whatever's cached
+    // locally (mirrors loadIncidentBlobFresh's same fallback above),
+    // since offline use still needs to work.
+    try {
+      const snap = await getDoc(doc(db, "icMeta", "standaloneIcsForms"));
+      return snap.exists() ? snap.data() : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+export async function saveStandaloneIcsForms(blob) {
+  await setDoc(doc(db, "icMeta", "standaloneIcsForms"), { ...blob, _serverWrite: serverTimestamp() });
+  return true;
+}
+
+// Real-time listener so a change made on one device (the phone) shows
+// up live on another (the laptop) if both happen to have the
+// workspace open at once, the same way watchIncident does for a
+// regular incident.
+export function watchStandaloneIcsForms(onChange) {
+  return onSnapshot(doc(db, "icMeta", "standaloneIcsForms"), (snap) => {
+    if (snap.exists()) onChange(snap.data());
+  });
+}
+
 // Canned Units / Objectives — board-wide quick-pick lists so common
 // apparatus IDs and standard objectives don't need retyping on every
 // incident. Shared across all incidents (not per-incident), since

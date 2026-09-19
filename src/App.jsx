@@ -12,6 +12,7 @@ import {
   deleteIncidentBlob, watchIncident, loadPinConfig, savePinConfig,
   triggerMaydayAlert, clearMaydayAlert, watchMaydayAlert,
   loadPresets, savePresets,
+  loadStandaloneIcsFormsFresh, saveStandaloneIcsForms, watchStandaloneIcsForms,
   loadAttachments, saveAttachment, deleteAttachment, deleteAllAttachments,
 } from "./store";
 import { COLORS, KFD_PATCH_DATA_URI, THEME_CSS } from "./theme";
@@ -7835,41 +7836,38 @@ function useOnlineStatus() {
 // (config.icsFormsPinHash, see PinGate.jsx's "icsForms" access level
 // and AdminModal's "Set ICS Forms PIN"), for filling out and
 // exporting forms (training, practice, ad-hoc use) without creating a
-// real incident record. Its data has no incident to attach to, so
-// rather than a new Firestore schema for it, it persists to this
-// device's localStorage only — it does NOT sync across devices or
-// browsers, and clearing site data / private browsing will lose it.
-// That trade-off fits the use case (a device kept for this purpose,
-// or genuinely disposable practice runs) better than the complexity
-// of a shared, un-owned Firestore document that unrelated concurrent
-// users could stomp on with no incident ID to separate their work.
-const STANDALONE_STORAGE_KEY = "cb_standalone_ics_forms";
-function loadStandaloneState() {
-  try {
-    const raw = localStorage.getItem(STANDALONE_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* corrupt or inaccessible — fall through to blank */ }
-  return null;
-}
+// real incident record. Its data lives in Firestore at the single,
+// well-known document icMeta/standaloneIcsForms (see store.js) —
+// deliberately one shared document rather than one per device or per
+// session, specifically so a form started on a phone shows up when
+// the same PIN is entered on a laptop. The trade-off is that everyone
+// using the ICS Forms PIN at any given time shares this one
+// workspace, the same way everyone already shares one config and one
+// presets document.
 function blankStandaloneSafety() {
   return { opFrom: "", opTo: "", preparedBy: "", position: "", signature: "", dateTime: "", rows: [] };
 }
+function blankStandaloneBlob() {
+  return {
+    incident: blankIncident(), org: blankOrg(), comms: defaultComms(), safety: blankStandaloneSafety(),
+    ics208: defaultIcs208(), ics208hm: defaultIcs208HM(), ics209: defaultIcs209(), ics206: defaultIcs206(),
+    logs: [], emtfLogs: [], formsUsed: {},
+  };
+}
 
 function StandaloneICSForms({ onLock, theme, toggleTheme }) {
-  // Read once, on mount, as the initial value for each piece of state
-  // below — not re-read on every render.
-  const saved = useRef(loadStandaloneState()).current;
-  const [incident, setIncident] = useState(saved?.incident || blankIncident());
-  const [org, setOrg] = useState(saved?.org || blankOrg());
-  const [comms, setComms] = useState(saved?.comms || defaultComms());
-  const [safety, setSafety] = useState(saved?.safety || blankStandaloneSafety());
-  const [ics208, setIcs208] = useState({ ...defaultIcs208(), ...(saved?.ics208 || {}) });
-  const [ics208hm, setIcs208hm] = useState({ ...defaultIcs208HM(), ...(saved?.ics208hm || {}) });
-  const [ics209, setIcs209] = useState({ ...defaultIcs209(), ...(saved?.ics209 || {}) });
-  const [ics206, setIcs206] = useState({ ...defaultIcs206(), ...(saved?.ics206 || {}) });
-  const [logs, setLogs] = useState(saved?.logs || []);
-  const [emtfLogs, setEmtfLogs] = useState(saved?.emtfLogs || []);
-  const [formsUsed, setFormsUsed] = useState(saved?.formsUsed || {});
+  const [ready, setReady] = useState(false);
+  const [incident, setIncident] = useState(blankIncident());
+  const [org, setOrg] = useState(blankOrg());
+  const [comms, setComms] = useState(defaultComms());
+  const [safety, setSafety] = useState(blankStandaloneSafety());
+  const [ics208, setIcs208] = useState(defaultIcs208());
+  const [ics208hm, setIcs208hm] = useState(defaultIcs208HM());
+  const [ics209, setIcs209] = useState(defaultIcs209());
+  const [ics206, setIcs206] = useState(defaultIcs206());
+  const [logs, setLogs] = useState([]);
+  const [emtfLogs, setEmtfLogs] = useState([]);
+  const [formsUsed, setFormsUsed] = useState({});
   // Not editable here — Tab208HM/Tab209 accept a mapData prop for
   // map-linked convenience features, but there's no real incident map
   // in this standalone workspace for it to reflect.
@@ -7879,25 +7877,95 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
   // loadPresets/savePresets AppInner itself uses — so this reuses
   // them directly rather than maintaining a separate copy.
   const [presets, setPresets] = useState({ objectivesByType: {}, incidentTypes: [] });
-  const [savedFlash, setSavedFlash] = useState(false);
+  // idle | saving | saved | synced — same vocabulary as AppInner's
+  // own saveState, shown the same way in the header.
+  const [saveState, setSaveState] = useState("idle");
+
   const saveTimer = useRef(null);
+  // Blocks an incoming real-time update from clobbering an edit this
+  // device hasn't finished saving yet (mirrors AppInner's identical
+  // dirty ref for the main incident sync).
+  const dirty = useRef(false);
+  // Set right before loading data (initial load, or applying an
+  // incoming remote update) so the autosave effect's very next run —
+  // triggered by those same state-setting calls — recognizes itself
+  // as a load, not a real edit, and skips resaving what was just read
+  // straight back to Firestore.
+  const suppressNextAutosave = useRef(false);
+  const lastKnownUpdatedAt = useRef(null);
 
-  useEffect(() => { (async () => setPresets(await loadPresets()))(); }, []);
+  function applyBlob(blob) {
+    suppressNextAutosave.current = true;
+    const b = { ...blankStandaloneBlob(), ...blob };
+    setIncident(b.incident);
+    setOrg(b.org);
+    setComms(b.comms);
+    setSafety(b.safety);
+    // Shallow-merged onto fresh defaults rather than used as-is —
+    // same reasoning as AppInner's own applyBlob: a workspace saved
+    // under an earlier version of these forms could be missing
+    // nested structures these forms now expect.
+    setIcs208({ ...defaultIcs208(), ...(b.ics208 || {}) });
+    setIcs208hm({ ...defaultIcs208HM(), ...(b.ics208hm || {}) });
+    setIcs209({ ...defaultIcs209(), ...(b.ics209 || {}) });
+    setIcs206({ ...defaultIcs206(), ...(b.ics206 || {}) });
+    setLogs(b.logs || []);
+    setEmtfLogs(b.emtfLogs || []);
+    setFormsUsed(b.formsUsed || {});
+    lastKnownUpdatedAt.current = blob.updatedAt || null;
+  }
 
-  // Debounced local persistence — mirrors the shape of the main app's
-  // autosave effect, just writing to localStorage instead of
-  // Firestore since there's no incident id to save under.
+  // Initial load — a fresh, server (not locally-cached) read, for the
+  // same reason loadIncidentBlobFresh uses one when opening an
+  // incident: this is the one moment a device is about to start
+  // editing on top of whatever it reads, and the whole point of this
+  // feature is that another device may have written since this one
+  // last saw the document.
   useEffect(() => {
+    (async () => {
+      const [blob, p] = await Promise.all([loadStandaloneIcsFormsFresh(), loadPresets()]);
+      if (blob) applyBlob(blob);
+      setPresets(p);
+      setReady(true);
+    })();
+  }, []);
+
+  // Debounced autosave — same shape as AppInner's own autosave effect,
+  // just against saveStandaloneIcsForms instead of saveIncidentBlob.
+  useEffect(() => {
+    if (!ready) return;
+    if (suppressNextAutosave.current) {
+      suppressNextAutosave.current = false;
+      return;
+    }
+    dirty.current = true;
+    setSaveState("saving");
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      try {
-        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed }));
-        setSavedFlash(true);
-        setTimeout(() => setSavedFlash(false), 1500);
-      } catch { /* private browsing, storage quota, etc. — data just won't persist */ }
-    }, 600);
+    saveTimer.current = setTimeout(async () => {
+      const updatedAt = nowISO();
+      const blob = { incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed, updatedAt };
+      const ok = await saveStandaloneIcsForms(blob);
+      lastKnownUpdatedAt.current = updatedAt;
+      dirty.current = false;
+      setSaveState(ok ? "saved" : "idle");
+    }, 900);
     return () => clearTimeout(saveTimer.current);
-  }, [incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed, ready]);
+
+  // Real-time: picks up a change from another device (the phone, if
+  // the laptop already has this open) without needing a reload.
+  useEffect(() => {
+    if (!ready) return;
+    const unsubscribe = watchStandaloneIcsForms((blob) => {
+      if (dirty.current) return; // don't clobber an in-flight local edit
+      if (blob && blob.updatedAt && blob.updatedAt !== lastKnownUpdatedAt.current) {
+        applyBlob(blob);
+        setSaveState("synced");
+      }
+    });
+    return () => unsubscribe();
+  }, [ready]);
 
   const toggleFormUsed = (k) => setFormsUsed(prev => ({ ...prev, [k]: !prev[k] }));
   const addObjective = (type, objective) => {
@@ -7910,21 +7978,23 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
     savePresets(next);
   };
 
-  const clearAll = () => {
-    if (!window.confirm("Clear all standalone ICS forms data on this device? This can't be undone.")) return;
-    try { localStorage.removeItem(STANDALONE_STORAGE_KEY); } catch { /* ignore */ }
-    setIncident(blankIncident());
-    setOrg(blankOrg());
-    setComms(defaultComms());
-    setSafety(blankStandaloneSafety());
-    setIcs208(defaultIcs208());
-    setIcs208hm(defaultIcs208HM());
-    setIcs209(defaultIcs209());
-    setIcs206(defaultIcs206());
-    setLogs([]);
-    setEmtfLogs([]);
-    setFormsUsed({});
+  const clearAll = async () => {
+    if (!window.confirm("Clear all standalone ICS forms data? This clears the shared workspace for everyone using the ICS Forms PIN and can't be undone.")) return;
+    const blank = { ...blankStandaloneBlob(), updatedAt: nowISO() };
+    applyBlob(blank);
+    setSaveState("saving");
+    const ok = await saveStandaloneIcsForms(blank);
+    lastKnownUpdatedAt.current = blank.updatedAt;
+    setSaveState(ok ? "saved" : "idle");
   };
+
+  if (!ready) {
+    return (
+      <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.muted, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'IBM Plex Sans', sans-serif" }}>
@@ -7938,9 +8008,9 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
-            <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", display: "flex", alignItems: "center", gap: 5, visibility: savedFlash ? "visible" : "hidden" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: COLORS.teal, flexShrink: 0 }} />
-              Saved on this device
+            <span style={{ fontSize: 11, color: COLORS.faint, fontFamily: "'IBM Plex Mono', monospace", display: "flex", alignItems: "center", gap: 5, visibility: saveState === "idle" ? "hidden" : "visible" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: saveState === "saving" ? COLORS.amber : COLORS.teal, transition: "background-color 0.15s" }} />
+              {saveState === "synced" ? "Updated elsewhere" : "Synced"}
             </span>
             <Btn kind="ghost" icon={theme === "dark" ? Sun : Moon} onClick={toggleTheme}>{theme === "dark" ? "Light" : "Dark"}</Btn>
             <Btn kind="ghost" icon={Trash2} onClick={clearAll}>Clear</Btn>
