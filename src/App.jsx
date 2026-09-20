@@ -7517,7 +7517,7 @@ function PasswordConfirmModal({ title, message, onConfirm, onCancel }) {
   );
 }
 
-function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOpenArchive, onOpenAdmin, onLock, mandatory }) {
+function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOpenArchive, onOpenAdmin, onLock, mandatory, restricted }) {
   const active = index.filter(i => !i.archived);
   const archivedCount = index.length - active.length;
   const [confirmAction, setConfirmAction] = useState(null); // { type: "archive" | "delete", id, name }
@@ -7579,7 +7579,9 @@ function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOp
               </>
             )}
           </div>
-          <Btn kind="solid" icon={Plus} onClick={() => setConfirmAction({ type: "new" })} style={{ marginBottom: 14, width: "100%", justifyContent: "center" }}>Start New Incident</Btn>
+          {!restricted && (
+            <Btn kind="solid" icon={Plus} onClick={() => setConfirmAction({ type: "new" })} style={{ marginBottom: 14, width: "100%", justifyContent: "center" }}>Start New Incident</Btn>
+          )}
           {active.length === 0 && <div style={{ color: COLORS.faint, fontSize: 13 }}>No active incidents.</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {active.map(item => (
@@ -7590,17 +7592,23 @@ function LibraryModal({ index, onClose, onLoad, onNew, onDelete, onArchive, onOp
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <Btn kind="subtle" onClick={() => onLoad(item.id)} style={{ padding: "5px 9px", fontSize: 12 }}>Open</Btn>
-                  <Btn kind="ghost" onClick={() => setConfirmAction({ type: "archive", id: item.id, name: item.name })} title="Archive" style={{ padding: "5px 9px", fontSize: 12 }}><Archive size={13} /></Btn>
-                  <Btn kind="danger" onClick={() => setConfirmAction({ type: "delete", id: item.id, name: item.name })} style={{ padding: "5px 9px", fontSize: 12 }}><Trash2 size={13} /></Btn>
+                  {!restricted && (
+                    <>
+                      <Btn kind="ghost" onClick={() => setConfirmAction({ type: "archive", id: item.id, name: item.name })} title="Archive" style={{ padding: "5px 9px", fontSize: 12 }}><Archive size={13} /></Btn>
+                      <Btn kind="danger" onClick={() => setConfirmAction({ type: "delete", id: item.id, name: item.name })} style={{ padding: "5px 9px", fontSize: 12 }}><Trash2 size={13} /></Btn>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-          <div style={{ borderTop: `1px solid ${COLORS.line}`, marginTop: 16, paddingTop: 12 }}>
-            <Btn kind="ghost" icon={Archive} onClick={onOpenArchive} style={{ width: "100%", justifyContent: "center", fontSize: 12.5 }}>
-              View Archived Incidents{archivedCount > 0 ? ` (${archivedCount})` : ""}
-            </Btn>
-          </div>
+          {!restricted && (
+            <div style={{ borderTop: `1px solid ${COLORS.line}`, marginTop: 16, paddingTop: 12 }}>
+              <Btn kind="ghost" icon={Archive} onClick={onOpenArchive} style={{ width: "100%", justifyContent: "center", fontSize: 12.5 }}>
+                View Archived Incidents{archivedCount > 0 ? ` (${archivedCount})` : ""}
+              </Btn>
+            </div>
+          )}
         </div>
       </div>
 
@@ -9275,7 +9283,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
 
       {ready && (showLib || !incidentLoaded) && (
         <LibraryModal index={index} onClose={() => setShowLib(false)} onLoad={openIncident} onNew={startNew} onDelete={deleteIncident}
-          onArchive={archiveIncident} onOpenArchive={() => setShowArchiveAuth(true)} onOpenAdmin={() => setShowAdminAuth(true)} onLock={onLock} mandatory={!incidentLoaded} />
+          onArchive={archiveIncident} onOpenArchive={() => setShowArchiveAuth(true)} onOpenAdmin={() => setShowAdminAuth(true)} onLock={onLock} mandatory={!incidentLoaded} restricted={restricted} />
       )}
 
       {showAdminAuth && (
