@@ -5066,8 +5066,8 @@ function TabICSForms(props) {
                 {alwaysIncluded
                   ? <CheckCircle2 size={16} color={COLORS.muted} style={{ flexShrink: 0 }} />
                   : <input type="checkbox" checked={isUsed} onChange={() => toggleFormUsed(o.k)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />}
-                <span onClick={() => setSelected(o.k)} style={{ fontSize: 12.5, cursor: "pointer", color: alwaysIncluded || isUsed ? COLORS.text : COLORS.muted, whiteSpace: "nowrap" }}>
-                  {o.label}{alwaysIncluded && <span style={{ color: COLORS.faint, fontSize: 11 }}> (always included)</span>}
+                <span onClick={() => setSelected(o.k)} style={{ fontSize: 12.5, cursor: "pointer", color: isUsed ? COLORS.text : COLORS.muted, whiteSpace: "nowrap" }}>
+                  {o.label}
                 </span>
               </div>
             );
