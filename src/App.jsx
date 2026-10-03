@@ -5,7 +5,7 @@ import {
   Printer, Plus, X, Clock, ChevronRight, Trash2, Download,
   FolderOpen, AlertTriangle, Shield, CheckCircle2, ArrowRightLeft, Lock, GripVertical, GripHorizontal,
   Archive, RotateCcw, Layers, Star, Paperclip, FileText, Image as ImageIcon, KeyRound, Settings, Sun, Moon,
-  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info, Ruler
+  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info, Ruler, Copy
 } from "lucide-react";
 import {
   loadIndex, saveIndex, loadIncidentBlobFresh, saveIncidentBlob,
@@ -5382,6 +5382,24 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
   };
   const updateLog = (id, patch) => setLogs(logs.map(l => l.id === id ? { ...l, ...patch } : l));
   const removeLog = (id) => setLogs(logs.filter(l => l.id !== id));
+  // Copies only the fields above the Activity Log section — name,
+  // position, agency, operational period, mileage, hotel, and
+  // resources assigned — into a brand-new log. Activity entries
+  // themselves and the "Prepared and Signed By" sign-off fields (which
+  // come after Activity Log) are deliberately left out, since the
+  // whole point is starting a fresh, unsigned log that still carries
+  // over the same header info rather than retyping it.
+  const copyLog = (id) => {
+    const src = logs.find(l => l.id === id);
+    if (!src) return;
+    const l = {
+      id: uid(), name: src.name, position: src.position, agency: src.agency, opFrom: src.opFrom, opTo: src.opTo,
+      homeAgencyUnitCallSign: src.homeAgencyUnitCallSign, vehicleMileage: src.vehicleMileage, hotelName: src.hotelName,
+      resourcesAssigned: (src.resourcesAssigned || []).map(r => ({ ...r, id: uid() })),
+      entries: [], preparedByName: "", preparedByPosition: "", signature: "", dateTime: "",
+    };
+    setLogs([...logs, l]); setActiveLog(l.id);
+  };
   const addEntry = (id) => updateLog(id, { entries: [{ id: uid(), time: nowISO(), text: "" }, ...(logs.find(l => l.id === id)?.entries || [])] });
   const updateEntry = (logId, entryId, patch) => {
     const log = logs.find(l => l.id === logId);
@@ -5447,7 +5465,10 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
                 <Field label="Name"><TextInput value={log.name} onChange={e => updateLog(log.id, { name: e.target.value })} /></Field>
                 <Field label="ICS Position / TX EMTF Role"><TextInput value={log.position} onChange={e => updateLog(log.id, { position: e.target.value })} /></Field>
                 <Field label="Home Agency (and TX EMTF Call Sign)"><TextInput value={log.agency} onChange={e => updateLog(log.id, { agency: e.target.value })} /></Field>
-                <div style={{ display: "flex", alignItems: "end" }}><Btn kind="danger" icon={Trash2} onClick={() => removeLog(log.id)}>Delete Log</Btn></div>
+                <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
+                  <Btn kind="subtle" icon={Copy} onClick={() => copyLog(log.id)} title="Start a new log with the same name, position, agency, operational period, mileage, hotel, and resources — activity entries and sign-off left blank">Copy Log</Btn>
+                  <Btn kind="danger" icon={Trash2} onClick={() => removeLog(log.id)}>Delete Log</Btn>
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 18 }}>
