@@ -311,6 +311,20 @@ function blankOrg() {
   };
 }
 
+// Pre-multi-incident saves have `emtfLogs` as a flat array of log
+// objects (each with `entries`, `resourcesAssigned`, etc., but no
+// `logs` property of its own). Newer saves are an array of incidents,
+// each with its own `logs` array. Detected by checking the first
+// item for a `logs` array specifically, since that's the one property
+// an old-format log object never had. Old data is wrapped into a
+// single untitled incident rather than discarded, so nothing existing
+// is lost by this change.
+function normalizeEmtfIncidents(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  if (Array.isArray(raw[0]?.logs)) return raw;
+  return [{ id: uid(), name: "", logs: raw }];
+}
+
 function normalizeOrg(org) {
   if (!org) return blankOrg();
   if (org.sections) {
@@ -1064,7 +1078,7 @@ function Panel({ title, icon: Icon, right, children, style }) {
 /* ============================================================
    TAB: ICS-201 INCIDENT BRIEFING
    ============================================================ */
-function Tab201({ incident, setIncident, resources, incidentTypePresets, objectivesByType, onAddObjective, assignmentPresets, resourceColumnOrder }) {
+function Tab201({ incident, setIncident, resources, incidentTypePresets, objectivesByType, onAddObjective, assignmentPresets, resourceColumnOrder, emtfIncidents }) {
   const [weatherStatus, setWeatherStatus] = useState(""); // "", "loading", or an error message
   const fetchCurrentWeather = () => {
     if (!navigator.geolocation) { setWeatherStatus("This device/browser doesn't support GPS location."); return; }
@@ -1139,7 +1153,14 @@ function Tab201({ incident, setIncident, resources, incidentTypePresets, objecti
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="Tactical Worksheet" icon={ClipboardList}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-          <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} placeholder="e.g. County Rd 411 Structure" /></Field>
+          {/* Hidden once ICS-214 EMTF has incidents of its own — that
+              tab manages its own, potentially multiple, incident
+              names independently of this single shared one, so
+              showing an unused/ambiguous field here would be
+              confusing once a department is working that way. */}
+          {(!emtfIncidents || emtfIncidents.length === 0) && (
+            <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} placeholder="e.g. County Rd 411 Structure" /></Field>
+          )}
           <Field label="Incident Number"><TextInput value={incident.number} onChange={e => setIncident({ ...incident, number: e.target.value })} placeholder="Dispatch / CAD #" /></Field>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginTop: 14 }}>
@@ -4901,7 +4922,7 @@ function Tab206({ ics206, setIcs206, incident, setIncident }) {
 // read/write the same underlying incident fields, so filling in one
 // updates the other. This is the one that includes the Resource
 // Summary table (Block 10), matching the official form exactly.
-function Tab201Full({ incident, setIncident, org, objectivesByType, onAddObjective, incidentTypePresets }) {
+function Tab201Full({ incident, setIncident, org, objectivesByType, onAddObjective, incidentTypePresets, emtfIncidents }) {
   const updateObjective = (i, val) => {
     const next = [...incident.objectives]; next[i] = val;
     setIncident({ ...incident, objectives: next });
@@ -4935,7 +4956,12 @@ function Tab201Full({ incident, setIncident, org, objectivesByType, onAddObjecti
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="ICS-201 · Incident Briefing (Official Form)" icon={ClipboardList} right={<ExportPdfButton onExport={doExport} />}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-          <Field label="1. Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
+          {/* Hidden once ICS-214 EMTF has incidents of its own — see
+              the same note on the Tactical Worksheet's copy of this
+              field. */}
+          {(!emtfIncidents || emtfIncidents.length === 0) && (
+            <Field label="1. Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
+          )}
           <Field label="2. Incident Number"><TextInput value={incident.number} onChange={e => setIncident({ ...incident, number: e.target.value })} /></Field>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginTop: 14 }}>
@@ -5075,7 +5101,7 @@ function TabICSForms(props) {
         </div>
       </Panel>
 
-      {selected === "201full" && <Tab201Full incident={props.incident} setIncident={props.setIncident} org={props.org} objectivesByType={props.objectivesByType} onAddObjective={props.onAddObjective} incidentTypePresets={props.incidentTypePresets} />}
+      {selected === "201full" && <Tab201Full incident={props.incident} setIncident={props.setIncident} org={props.org} objectivesByType={props.objectivesByType} onAddObjective={props.onAddObjective} incidentTypePresets={props.incidentTypePresets} emtfIncidents={props.emtfIncidents} />}
       {selected === "205" && <TabComms comms={props.comms} setComms={props.setComms} incident={props.incident} setIncident={props.setIncident} />}
       {selected === "215a" && <Tab215A safety={props.safety} setSafety={props.setSafety} org={props.org} incident={props.incident} setIncident={props.setIncident} />}
       {selected === "208" && <Tab208 ics208={props.ics208} setIcs208={props.setIcs208} incident={props.incident} setIncident={props.setIncident} />}
@@ -5083,7 +5109,7 @@ function TabICSForms(props) {
       {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} setIncident={props.setIncident} mapData={props.mapData} />}
       {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} setIncident={props.setIncident} />}
       {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} setIncident={props.setIncident} />}
-      {selected === "214emtf" && <Tab214EMTF logs={props.emtfLogs} setLogs={props.setEmtfLogs} incident={props.incident} setIncident={props.setIncident} />}
+      {selected === "214emtf" && <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} />}
     </div>
   );
 }
@@ -5368,7 +5394,33 @@ function Tab214({ logs, setLogs, incident, setIncident }) {
    this one was a blank Word template, not a fillable PDF, so there's
    no official form to map onto the way the other ICS forms are.
    ============================================================ */
-function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
+function Tab214EMTF({ emtfIncidents, setEmtfIncidents }) {
+  // TX EMTF deployments can run multiple genuinely separate incidents
+  // at once (different call signs sent to different incidents on the
+  // same activation), so this tab manages its own list of incidents —
+  // each with its own name and its own set of logs underneath it —
+  // entirely independent of the single shared `incident` the rest of
+  // the app (Tactical Worksheet, other ICS forms) is built around.
+  const [activeIncidentId, setActiveIncidentId] = useState(emtfIncidents[0]?.id || null);
+  useEffect(() => { if (!emtfIncidents.find(i => i.id === activeIncidentId)) setActiveIncidentId(emtfIncidents[0]?.id || null); }, [emtfIncidents]);
+
+  const addIncident = () => {
+    const inc = { id: uid(), name: "", logs: [] };
+    setEmtfIncidents([...emtfIncidents, inc]); setActiveIncidentId(inc.id);
+  };
+  const updateIncident = (id, patch) => setEmtfIncidents(emtfIncidents.map(i => i.id === id ? { ...i, ...patch } : i));
+  const removeIncident = (id) => setEmtfIncidents(emtfIncidents.filter(i => i.id !== id));
+
+  const activeIncident = emtfIncidents.find(i => i.id === activeIncidentId);
+  // Everything below this point — all the log-level CRUD and the form
+  // UI itself — is unchanged from before the multi-incident feature:
+  // it already only ever worked with a local `logs`/`setLogs` pair, so
+  // deriving that pair from the currently-selected incident's own
+  // `logs` array (instead of a single flat top-level array) is enough
+  // to make the whole rest of the component incident-scoped for free.
+  const logs = activeIncident?.logs || [];
+  const setLogs = (newLogs) => updateIncident(activeIncidentId, { logs: newLogs });
+
   const [activeLog, setActiveLog] = useState(logs[0]?.id || null);
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
 
@@ -5422,8 +5474,13 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
   const log = logs.find(l => l.id === activeLog);
 
   const doExport = async () => {
-    const { textFields, truncatedEntryCount, truncatedResourceCount } = mapIcs214EMTFFields(incident, log);
-    await fillAndDownloadIcsPdf({ templateFile: "ics-214-emtf.pdf", filename: icsFilename("ICS-214-EMTF", incident), textFields });
+    // mapIcs214EMTFFields/icsFilename both expect an `incident`-shaped
+    // object with a `name` — passed the active EMTF incident's own
+    // name here rather than the app's single shared incident, since
+    // that's the whole point of this tab managing its own incidents.
+    const emtfIncidentAsIncident = { name: activeIncident?.name || "" };
+    const { textFields, truncatedEntryCount, truncatedResourceCount } = mapIcs214EMTFFields(emtfIncidentAsIncident, log);
+    await fillAndDownloadIcsPdf({ templateFile: "ics-214-emtf.pdf", filename: icsFilename("ICS-214-EMTF", emtfIncidentAsIncident), textFields });
     const notes = [];
     if (truncatedResourceCount > 0) notes.push(`${truncatedResourceCount} resource(s) assigned`);
     if (truncatedEntryCount > 0) notes.push(`${truncatedEntryCount} activity log entry/entries`);
@@ -5434,13 +5491,36 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
     <Panel title="ICS-214 EMTF · Unit / Activity Log (TX EMTF)" icon={ClipboardList} right={
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {log && <ExportPdfButton onExport={doExport} />}
-        <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>
+        {activeIncident && <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>}
+        <Btn kind="solid" icon={Plus} onClick={addIncident}>New Incident</Btn>
       </div>
     }>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
-        <Field label="Incident Name"><TextInput value={incident.name} onChange={e => setIncident({ ...incident, name: e.target.value })} /></Field>
-      </div>
-      {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
+      {emtfIncidents.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No incidents yet. Start one per deployment/incident this unit is working.</div>}
+      {emtfIncidents.length > 0 && (
+        <>
+          {/* One EMTF incident can be run alongside another entirely
+              separate one at the same time — these tabs switch which
+              incident's own name and logs are shown below, the same
+              way the log tabs further down switch between logs within
+              whichever incident is selected here. */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {emtfIncidents.map(i => (
+              <button key={i.id} onClick={() => setActiveIncidentId(i.id)} style={{
+                padding: "6px 11px", borderRadius: 4, fontSize: 12.5, cursor: "pointer",
+                background: activeIncidentId === i.id ? COLORS.amber : COLORS.panel2,
+                color: activeIncidentId === i.id ? "#1a1a1a" : COLORS.text,
+                border: `1px solid ${activeIncidentId === i.id ? COLORS.amber : COLORS.line}`,
+                fontWeight: 600,
+              }}>{i.name || "Untitled Incident"}</button>
+            ))}
+          </div>
+          {activeIncident && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr)) auto", gap: 12, marginBottom: 18, alignItems: "end" }}>
+                <Field label="Incident Name"><TextInput value={activeIncident.name} onChange={e => updateIncident(activeIncident.id, { name: e.target.value })} /></Field>
+                <Btn kind="danger" icon={Trash2} onClick={() => removeIncident(activeIncident.id)}>Delete Incident</Btn>
+              </div>
+              {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
       {logs.length > 0 && (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
@@ -5518,6 +5598,10 @@ function Tab214EMTF({ logs, setLogs, incident, setIncident }) {
                 <Field label="Date / Time"><TextInput type="datetime-local" value={log.dateTime} onChange={e => updateLog(log.id, { dateTime: e.target.value })} /></Field>
               </div>
             </div>
+          )}
+        </>
+      )}
+            </>
           )}
         </>
       )}
@@ -7896,7 +7980,7 @@ function blankStandaloneBlob() {
   return {
     incident: blankIncident(), org: blankOrg(), comms: defaultComms(), safety: blankStandaloneSafety(),
     ics208: defaultIcs208(), ics208hm: defaultIcs208HM(), ics209: defaultIcs209(), ics206: defaultIcs206(),
-    logs: [], emtfLogs: [], formsUsed: {},
+    logs: [], emtfIncidents: [], formsUsed: {},
   };
 }
 
@@ -7912,7 +7996,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
   const [ics209, setIcs209] = useState(defaultIcs209());
   const [ics206, setIcs206] = useState(defaultIcs206());
   const [logs, setLogs] = useState([]);
-  const [emtfLogs, setEmtfLogs] = useState([]);
+  const [emtfIncidents, setEmtfIncidents] = useState([]);
   const [formsUsed, setFormsUsed] = useState({});
   // Not editable here — Tab208HM/Tab209 accept a mapData prop for
   // map-linked convenience features, but there's no real incident map
@@ -7956,7 +8040,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
     setIcs209({ ...defaultIcs209(), ...(b.ics209 || {}) });
     setIcs206({ ...defaultIcs206(), ...(b.ics206 || {}) });
     setLogs(b.logs || []);
-    setEmtfLogs(b.emtfLogs || []);
+    setEmtfIncidents(normalizeEmtfIncidents(b.emtfIncidents ?? b.emtfLogs));
     setFormsUsed(b.formsUsed || {});
     lastKnownUpdatedAt.current = blob.updatedAt || null;
   }
@@ -7989,7 +8073,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       const updatedAt = nowISO();
-      const blob = { incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed, updatedAt };
+      const blob = { incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfIncidents, formsUsed, updatedAt };
       const ok = await saveStandaloneIcsForms(blob);
       lastKnownUpdatedAt.current = updatedAt;
       dirty.current = false;
@@ -7997,7 +8081,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
     }, 900);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfLogs, formsUsed, ready]);
+  }, [incident, org, comms, safety, ics208, ics208hm, ics209, ics206, logs, emtfIncidents, formsUsed, ready]);
 
   // Real-time: picks up a change from another device (the phone, if
   // the laptop already has this open) without needing a reload.
@@ -8104,7 +8188,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
           ics209={ics209} setIcs209={setIcs209}
           ics206={ics206} setIcs206={setIcs206}
           logs={logs} setLogs={setLogs}
-          emtfLogs={emtfLogs} setEmtfLogs={setEmtfLogs}
+          emtfIncidents={emtfIncidents} setEmtfIncidents={setEmtfIncidents}
           formsUsed={formsUsed} toggleFormUsed={toggleFormUsed}
         />
       </div>
@@ -8253,7 +8337,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const [rehab, setRehab] = useState([]);
   const [mapData, setMapData] = useState(defaultMapData());
   const [logs, setLogs] = useState([]);
-  const [emtfLogs, setEmtfLogs] = useState([]);
+  const [emtfIncidents, setEmtfIncidents] = useState([]);
 
   const saveTimer = useRef(null);
   const lastKnownUpdatedAt = useRef(null);
@@ -8773,7 +8857,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
     setRehab(blob.rehab || []);
     setMapData(parseMapData(blob.mapData));
     setLogs(blob.logs || []);
-    setEmtfLogs(blob.emtfLogs || []);
+    setEmtfIncidents(normalizeEmtfIncidents(blob.emtfIncidents ?? blob.emtfLogs));
     if (markSynced) lastKnownUpdatedAt.current = blob.updatedAt || null;
   }
 
@@ -8795,7 +8879,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       const updatedAt = nowISO();
-      const blob = { incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, emtfLogs, formsUsed, mapData: JSON.stringify(mapData), updatedAt };
+      const blob = { incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, emtfIncidents, formsUsed, mapData: JSON.stringify(mapData), updatedAt };
       const ok = await saveIncidentBlob(incident.id, blob);
       const meta = { id: incident.id, name: incident.name, type: incident.type, savedAt: updatedAt };
       const nextIndex = [meta, ...index.filter(i => i.id !== incident.id)];
@@ -8807,7 +8891,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
     }, 900);
     return () => clearTimeout(saveTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, emtfLogs, formsUsed, mapData, ready, incidentLoaded]);
+  }, [incident, resources, resourceColumnOrder, org, comms, safety, ics208, ics208hm, ics209, ics206, rehab, logs, emtfIncidents, formsUsed, mapData, ready, incidentLoaded]);
 
   // real-time: subscribe to this incident's Firestore doc so other
   // users' changes appear here immediately, no polling needed.
@@ -9005,7 +9089,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   }, [resources, presets.assignments, resourceColumnOrder, ready, incidentLoaded]);
 
   const startNew = () => {
-    applyBlob({ incident: blankIncident(), resources: [], resourceColumnOrder: [], org: blankOrg(), comms: defaultComms(), safety: { opFrom: "", opTo: "", preparedBy: "", position: "", signature: "", dateTime: "", rows: [] }, ics208: defaultIcs208(), ics208hm: defaultIcs208HM(), ics209: defaultIcs209(), ics206: defaultIcs206(), rehab: [], logs: [], emtfLogs: [], formsUsed: {}, mapData: defaultMapData() });
+    applyBlob({ incident: blankIncident(), resources: [], resourceColumnOrder: [], org: blankOrg(), comms: defaultComms(), safety: { opFrom: "", opTo: "", preparedBy: "", position: "", signature: "", dateTime: "", rows: [] }, ics208: defaultIcs208(), ics208hm: defaultIcs208HM(), ics209: defaultIcs209(), ics206: defaultIcs206(), rehab: [], logs: [], emtfIncidents: [], formsUsed: {}, mapData: defaultMapData() });
     setAttachments([]);
     setIncidentLoaded(true);
     setShowLib(false);
@@ -9253,7 +9337,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
             <div style={{ color: COLORS.muted, padding: 40, textAlign: "center" }}>Loading…</div>
           ) : (
             <>
-              {tab === "201" && <Tab201 incident={incident} setIncident={setIncident} resources={resources} incidentTypePresets={presets.incidentTypes} objectivesByType={presets.objectivesByType} onAddObjective={addObjectiveForType} assignmentPresets={presets.assignments} resourceColumnOrder={resourceColumnOrder} />}
+              {tab === "201" && <Tab201 incident={incident} setIncident={setIncident} resources={resources} incidentTypePresets={presets.incidentTypes} objectivesByType={presets.objectivesByType} onAddObjective={addObjectiveForType} assignmentPresets={presets.assignments} resourceColumnOrder={resourceColumnOrder} emtfIncidents={emtfIncidents} />}
               {tab === "resources" && <TabResources resources={resources} setResources={setResources} now={effectiveNow}
                 incident={incident} setIncident={setIncident} parIntervalMinutes={presets.parIntervalMinutes}
                 departments={presets.departments} onAddDepartment={saveDepartment} onAddUnitUnderDepartment={saveUnitUnderDepartment}
@@ -9281,7 +9365,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
                   ics209={ics209} setIcs209={setIcs209}
                   ics206={ics206} setIcs206={setIcs206}
                   logs={logs} setLogs={setLogs}
-                  emtfLogs={emtfLogs} setEmtfLogs={setEmtfLogs}
+                  emtfIncidents={emtfIncidents} setEmtfIncidents={setEmtfIncidents}
                   mapData={mapData}
                   objectivesByType={presets.objectivesByType} onAddObjective={addObjectiveForType} incidentTypePresets={presets.incidentTypes}
                   formsUsed={formsUsed} toggleFormUsed={toggleFormUsed}
