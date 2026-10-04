@@ -5,7 +5,7 @@ import {
   Printer, Plus, X, Clock, ChevronRight, Trash2, Download,
   FolderOpen, AlertTriangle, Shield, CheckCircle2, ArrowRightLeft, Lock, GripVertical, GripHorizontal,
   Archive, RotateCcw, Layers, Star, Paperclip, FileText, Image as ImageIcon, KeyRound, Settings, Sun, Moon,
-  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info, Ruler, Copy
+  Map as MapIcon, Crosshair, CloudSun, RefreshCw, Play, Pause, ChevronDown, ChevronLeft, Menu, Info, Ruler, Copy, Mail, Upload
 } from "lucide-react";
 import {
   loadIndex, saveIndex, loadIncidentBlobFresh, saveIncidentBlob,
@@ -19,7 +19,7 @@ import { COLORS, KFD_PATCH_DATA_URI, THEME_CSS } from "./theme";
 import PinGate, { refreshUnlockRecord } from "./PinGate.jsx";
 import { playMaydayTone, stopMaydayTone, unlockAudioContext, setupAudioResumeListeners } from "./audio";
 import { sha256 } from "./pin";
-import { fillAndDownloadIcsPdf, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields, mapIcs214EMTFFields } from "./icsPdfExport";
+import { fillAndDownloadIcsPdf, buildIcsPdfBlob, downloadPdfBlob, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields, mapIcs214EMTFFields } from "./icsPdfExport";
 import L from "leaflet";
 import "leaflet-draw";
 import "leaflet/dist/leaflet.css";
@@ -1036,6 +1036,41 @@ function ExportPdfButton({ onExport }) {
       {!error && warning && <span style={{ fontSize: 11, color: COLORS.amber }}>{warning}</span>}
       <Btn kind="subtle" icon={Download} onClick={handleClick} disabled={status === "exporting"} style={{ padding: "6px 11px", fontSize: 12.5 }}>
         {status === "exporting" ? "Exporting…" : "Export PDF"}
+      </Btn>
+    </div>
+  );
+}
+
+// Same idea as ExportPdfButton, for actions that finish with a short
+// confirmation rather than a file landing in Downloads (emailing,
+// uploading). onRun resolves to nothing, or { text, warning } — text
+// is shown as a brief confirmation, warning in amber.
+function PdfActionButton({ icon, label, busyLabel, onRun }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null); // { text?, warning? } | { error }
+  useEffect(() => {
+    if (!result || result.error) return;
+    const t = setTimeout(() => setResult(null), 10000);
+    return () => clearTimeout(t);
+  }, [result]);
+  const handleClick = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      setResult((await onRun()) || null);
+    } catch (err) {
+      console.error(`${label} failed:`, err);
+      setResult({ error: err?.message || `${label} failed — please try again.` });
+    }
+    setBusy(false);
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {result?.error && <span style={{ fontSize: 11, color: COLORS.dangerText }}>{result.error}</span>}
+      {result?.text && <span style={{ fontSize: 11, color: COLORS.teal }}>{result.text}</span>}
+      {result?.warning && <span style={{ fontSize: 11, color: COLORS.amber }}>{result.warning}</span>}
+      <Btn kind="subtle" icon={icon} onClick={handleClick} disabled={busy} style={{ padding: "6px 11px", fontSize: 12.5 }}>
+        {busy ? busyLabel : label}
       </Btn>
     </div>
   );
@@ -5109,7 +5144,7 @@ function TabICSForms(props) {
       {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} setIncident={props.setIncident} mapData={props.mapData} />}
       {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} setIncident={props.setIncident} />}
       {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} setIncident={props.setIncident} />}
-      {selected === "214emtf" && <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} />}
+      {selected === "214emtf" && <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} sharing={props.emtfSharing} />}
     </div>
   );
 }
@@ -5394,7 +5429,117 @@ function Tab214({ logs, setLogs, incident, setIncident }) {
    this one was a blank Word template, not a fillable PDF, so there's
    no official form to map onto the way the other ICS forms are.
    ============================================================ */
-function Tab214EMTF({ emtfIncidents, setEmtfIncidents }) {
+// ---- ICS-214 EMTF: email + upload ----
+//
+// Configured by an admin under Admin -> ICS-214 EMTF Sharing (kept in
+// the shared presets, so one setup applies to every device) rather than
+// hardcoded here.
+//
+// EMAIL: a web page can't send email on its own, so one-click sending
+// goes through a small web service the admin points the app at. The one
+// that ships with the app is integrations/gmail-send-email.gs — a Google
+// Apps Script web app that sends from a Gmail account (setup steps are
+// at the top of that file). Any service that accepts the same POST and
+// answers with JSON like {"ok":true} (or {"ok":false,"error":"..."})
+// works the same way. The POST body is JSON with: to, subject, body,
+// filename, contentBase64 (the PDF), incidentName, logName, position.
+//
+// UPLOAD has two modes:
+//   "open": downloads the PDF and opens the admin's link — e.g. a
+//     OneDrive "Request files" or shared-folder link. That page is a
+//     web form for a person to use; a web app can't fill it in, so the
+//     PDF has to be dropped into it by hand.
+//   "post": POSTs the PDF straight to a webhook URL (same body as above,
+//     minus the email fields) for a service that saves the file somewhere.
+// Requests go out as text/plain rather than application/json on
+// purpose, to avoid a CORS preflight request that Apps Script and
+// similar endpoints don't answer.
+
+const EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+function parseRecipients(str) {
+  return String(str || "").split(/[;,\s]+/).filter(Boolean);
+}
+
+// Checks and cleans the admin form's values; returns { error } or { cfg }.
+function validateEmtfSharing(raw) {
+  const recipients = parseRecipients(raw.emailTo);
+  const bad = recipients.find(a => !EMAIL_RE.test(a));
+  if (bad) return { error: `"${bad}" doesn't look like an email address.` };
+  const emailEndpoint = String(raw.emailEndpoint || "").trim();
+  const uploadLink = String(raw.uploadLink || "").trim();
+  if (emailEndpoint && recipients.length === 0) return { error: "Add at least one email address for the email service to send to." };
+  for (const [label, v] of [["Email service URL", emailEndpoint], ["Upload link", uploadLink]]) {
+    if (v && !/^https:\/\//i.test(v)) return { error: `${label} must start with https://` };
+  }
+  return { cfg: { emailTo: recipients.join(", "), emailEndpoint, uploadLink, uploadMode: raw.uploadMode === "post" ? "post" : "open" } };
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Posts a payload to a webhook (the Apps Script email service, or any
+// service that behaves like it). `what` is "email" or "upload", only
+// used in messages.
+async function postToWebhook({ url, what, payload }) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error(`You're offline — try the ${what} again once you have a connection.`);
+  }
+  let res;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload) });
+  } catch {
+    // The request may well have gone through even though the response
+    // couldn't be read (e.g. the service didn't send the CORS header the browser needs), so don't
+    // claim it failed outright — retrying blindly could send a
+    // duplicate email or hit a name conflict in the folder.
+    const where = what === "email" ? "Check that it arrived before sending again." : "Check the destination folder before trying again.";
+    throw new Error(`Couldn't confirm the ${what} — no response received. ${where}`);
+  }
+  if (!res.ok) throw new Error(`The ${what} failed (${res.status}). Check the service's logs.`);
+  // Apps Script always answers 200 and reports its own failures in the
+  // body, so the body has to be read too — and an HTML page back means
+  // the request never reached the script at all (usually a deployment
+  // that isn't open to "Anyone"), which must not be mistaken for success.
+  const text = await res.text().catch(() => "");
+  if (/^\s*</.test(text)) {
+    throw new Error(`The ${what} service answered with a web page instead of a confirmation — check that it's deployed as a web app open to "Anyone".`);
+  }
+  let reply = null;
+  try { reply = JSON.parse(text); } catch { /* a plain "ok" etc. is fine */ }
+  if (reply && reply.ok === false) throw new Error(`The ${what} failed: ${reply.error || "the service reported an error."}`);
+}
+
+// Manual fallback when no email service is configured. Returns a short
+// note to show the user, or "" when nothing needs saying.
+async function emailPdf({ blob, filename, subject, body, to }) {
+  const file = new File([blob], filename, { type: "application/pdf" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: subject, text: body });
+      return "";
+    } catch (err) {
+      if (err?.name === "AbortError") return ""; // they closed the share sheet
+      // Anything else (e.g. the browser decided too long passed since
+      // the tap while the PDF was being built) falls through to the
+      // download-and-draft route below instead of just failing.
+    }
+  }
+  downloadPdfBlob(blob, filename);
+  const addressed = (to || []).map(encodeURIComponent).join(",");
+  window.location.href = `mailto:${addressed}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return "PDF saved to your downloads — attach it to the email draft that just opened.";
+}
+
+function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
   // TX EMTF deployments can run multiple genuinely separate incidents
   // at once (different call signs sent to different incidents on the
   // same activation), so this tab manages its own list of incidents —
@@ -5473,24 +5618,107 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents }) {
 
   const log = logs.find(l => l.id === activeLog);
 
-  const doExport = async () => {
-    // mapIcs214EMTFFields/icsFilename both expect an `incident`-shaped
-    // object with a `name` — passed the active EMTF incident's own
-    // name here rather than the app's single shared incident, since
-    // that's the whole point of this tab managing its own incidents.
+  // Builds this log's PDF once so Export, Email, and Upload all send
+  // exactly the same file. mapIcs214EMTFFields/icsFilename expect an
+  // `incident`-shaped object with a `name` — given the active EMTF
+  // incident's own name rather than the app's single shared incident,
+  // since that's the point of this tab managing its own incidents.
+  const buildEmtfPdf = async () => {
     const emtfIncidentAsIncident = { name: activeIncident?.name || "" };
     const { textFields, truncatedEntryCount, truncatedResourceCount } = mapIcs214EMTFFields(emtfIncidentAsIncident, log);
-    await fillAndDownloadIcsPdf({ templateFile: "ics-214-emtf.pdf", filename: icsFilename("ICS-214-EMTF", emtfIncidentAsIncident), textFields });
+    const blob = await buildIcsPdfBlob({ templateFile: "ics-214-emtf.pdf", textFields });
+    // The log's own name goes in the filename too: several logs under
+    // one incident would otherwise all share one filename, which
+    // collides when they're uploaded into the same folder.
+    const logLabel = (log.name || log.position || "").replace(/\//g, "-");
+    const filename = icsFilename("ICS-214-EMTF", emtfIncidentAsIncident, logLabel);
     const notes = [];
     if (truncatedResourceCount > 0) notes.push(`${truncatedResourceCount} resource(s) assigned`);
     if (truncatedEntryCount > 0) notes.push(`${truncatedEntryCount} activity log entry/entries`);
-    if (notes.length > 0) return `Form only fits so many rows per section — left off: ${notes.join(", ")}.`;
+    const truncationNote = notes.length > 0 ? `Form only fits so many rows per section — left off: ${notes.join(", ")}.` : "";
+    return { blob, filename, truncationNote };
+  };
+
+  const doExport = async () => {
+    const { blob, filename, truncationNote } = await buildEmtfPdf();
+    downloadPdfBlob(blob, filename);
+    return truncationNote || undefined;
+  };
+
+  // Admin-managed under Admin -> ICS-214 EMTF Sharing.
+  const cfg = sharing || {};
+
+  const doEmail = async () => {
+    const recipients = parseRecipients(cfg.emailTo);
+    const oneClick = !!cfg.emailEndpoint;
+    if (oneClick && recipients.length === 0) {
+      throw new Error("No email address is set — an admin can add one under Admin → ICS-214 EMTF Sharing.");
+    }
+    const { blob, filename, truncationNote } = await buildEmtfPdf();
+    const incidentLabel = activeIncident?.name || "Incident";
+    const subject = `ICS-214 EMTF – ${incidentLabel} – ${log.name || log.position || "Activity Log"}`;
+    const body = [
+      "ICS-214 EMTF activity log attached.",
+      `Incident: ${incidentLabel}`,
+      log.name && `Name: ${log.name}`,
+      log.position && `Position: ${log.position}`,
+    ].filter(Boolean).join("\n");
+    if (oneClick) {
+      await postToWebhook({
+        url: cfg.emailEndpoint, what: "email",
+        payload: {
+          to: recipients.join(";"), subject, body, filename, contentBase64: await blobToBase64(blob),
+          incidentName: activeIncident?.name || "", logName: log.name || "", position: log.position || "",
+        },
+      });
+      return { text: `Emailed to ${recipients.join(", ")}.`, warning: truncationNote || undefined };
+    }
+    const text = await emailPdf({ blob, filename, subject, body, to: recipients });
+    return { text: text || undefined, warning: truncationNote || undefined };
+  };
+
+  const doUpload = async () => {
+    if (!cfg.uploadLink) {
+      throw new Error("No upload link is set — an admin can add one under Admin → ICS-214 EMTF Sharing.");
+    }
+    const direct = cfg.uploadMode === "post";
+    // Opened right here, before any await: a window opened later (once
+    // the PDF has finished building) is no longer tied to the tap, and
+    // pop-up blockers will often stop it.
+    const win = direct ? null : window.open("", "_blank");
+    try {
+      const { blob, filename, truncationNote } = await buildEmtfPdf();
+      if (direct) {
+        await postToWebhook({
+          url: cfg.uploadLink, what: "upload",
+          payload: {
+            filename, contentBase64: await blobToBase64(blob),
+            incidentName: activeIncident?.name || "", logName: log.name || "", position: log.position || "",
+          },
+        });
+        return { text: "Uploaded.", warning: truncationNote || undefined };
+      }
+      downloadPdfBlob(blob, filename);
+      if (win) { win.opener = null; win.location.href = cfg.uploadLink; }
+      else window.open(cfg.uploadLink, "_blank");
+      return {
+        text: win
+          ? "PDF saved to your downloads — drop it into the upload page that just opened."
+          : "PDF saved to your downloads. If the upload page didn't open, allow pop-ups and try again.",
+        warning: truncationNote || undefined,
+      };
+    } catch (err) {
+      win?.close();
+      throw err;
+    }
   };
 
   return (
     <Panel title="ICS-214 EMTF · Unit / Activity Log (TX EMTF)" icon={ClipboardList} right={
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {log && <ExportPdfButton onExport={doExport} />}
+        {log && <PdfActionButton icon={Mail} label="Email" busyLabel="Preparing…" onRun={doEmail} />}
+        {log && <PdfActionButton icon={Upload} label="Upload" busyLabel="Uploading…" onRun={doUpload} />}
         {activeIncident && <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>}
         <Btn kind="solid" icon={Plus} onClick={addIncident}>New Incident</Btn>
       </div>
@@ -5537,8 +5765,12 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents }) {
             <div>
               <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", margin: "4px 0 8px" }}>Operational Period</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 18 }}>
-                <Field label="Date / Time From"><TextInput type="datetime-local" value={log.opFrom} onChange={e => updateLog(log.id, { opFrom: e.target.value })} /></Field>
-                <Field label="Date / Time To"><TextInput type="datetime-local" value={log.opTo} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
+                {/* Times are fixed at 00:00–24:00 (see mapIcs214EMTFFields) so
+                    only dates are entered. "Date To" fills in to match
+                    "Date From" the first time it's set, since the usual
+                    period is a single day. */}
+                <Field label="Date From (00:00)"><TextInput type="date" value={(log.opFrom || "").slice(0, 10)} onChange={e => { const v = e.target.value; updateLog(log.id, { opFrom: v, ...(v && !log.opTo ? { opTo: v } : {}) }); }} /></Field>
+                <Field label="Date To (24:00)"><TextInput type="date" value={(log.opTo || "").slice(0, 10)} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr)) auto", gap: 10, marginBottom: 14 }}>
@@ -7255,7 +7487,7 @@ function ManageIncidentTypesModal({ onClose, onBack, incidentTypes, onAdd, onRen
 // ever renders. Previously, changing the admin password specifically
 // only lived inside the archive browsing flow, several steps removed
 // from where someone would naturally look for it.
-function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onSetIcsFormsPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings }) {
+function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onSetIcsFormsPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings, onManageEmtfSharing }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
       <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
@@ -7274,6 +7506,7 @@ function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedP
           <Btn kind="ghost" icon={Layers} onClick={onManageAssignmentsByType} style={{ width: "100%", justifyContent: "center" }}>Assignments by Incident Type</Btn>
           <Btn kind="ghost" icon={CheckCircle2} onClick={onManageTasksByType} style={{ width: "100%", justifyContent: "center" }}>Tasks by Incident Type</Btn>
           <Btn kind="ghost" icon={AlertTriangle} onClick={onManageParSettings} style={{ width: "100%", justifyContent: "center" }}>PAR / Mayday Settings</Btn>
+          <Btn kind="ghost" icon={Mail} onClick={onManageEmtfSharing} style={{ width: "100%", justifyContent: "center" }}>ICS-214 EMTF Sharing</Btn>
         </div>
       </div>
     </div>
@@ -7301,6 +7534,68 @@ function ParSettingsModal({ onClose, onBack, parIntervalMinutes, onSave }) {
           A reminder pops up this often, counting from the last completed PAR, prompting a fresh accountability check.
         </div>
         <Btn kind="solid" onClick={() => { onSave(value); onClose(); }} style={{ width: "100%", justifyContent: "center", marginTop: 14 }}>Save</Btn>
+      </div>
+    </div>
+  );
+}
+
+// Where ICS-214 EMTF's Email and Upload buttons send things. One
+// shared setting (see the notes above EMAIL_RE for how each piece works).
+function EmtfSharingModal({ onClose, onBack, value, onSave }) {
+  const [emailTo, setEmailTo] = useState(value?.emailTo || "");
+  const [emailEndpoint, setEmailEndpoint] = useState(value?.emailEndpoint || "");
+  const [uploadLink, setUploadLink] = useState(value?.uploadLink || "");
+  const [uploadMode, setUploadMode] = useState(value?.uploadMode === "post" ? "post" : "open");
+  const [error, setError] = useState("");
+  const help = { fontSize: 11.5, color: COLORS.muted, marginTop: 5, lineHeight: 1.5 };
+  const save = () => {
+    const result = validateEmtfSharing({ emailTo, emailEndpoint, uploadLink, uploadMode });
+    if (result.error) { setError(result.error); return; }
+    onSave(result.cfg);
+    onClose();
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
+      <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 440, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto", padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onBack && <button onClick={onBack} title="Back to Admin" style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><ChevronLeft size={18} /></button>}
+            <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 14 }}>ICS-214 EMTF Sharing</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={16} /></button>
+        </div>
+
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", marginBottom: 8 }}>Email</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+          <div>
+            <Field label="Send to (one or more addresses)"><TextInput value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="name@agency.gov, other@agency.gov" /></Field>
+          </div>
+          <div>
+            <Field label="Email service URL"><TextInput value={emailEndpoint} onChange={e => setEmailEndpoint(e.target.value)} placeholder="https://script.google.com/macros/s/…/exec" /></Field>
+            <div style={help}>With this set, one click sends the PDF from your Gmail account to the address(es) above (setup script: integrations/gmail-send-email.gs). Leave it blank and Email just opens the device's share sheet or a pre-addressed draft, which still needs a manual send.</div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: COLORS.muted, fontFamily: "'Oswald', sans-serif", marginBottom: 8 }}>Upload</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <Field label="Upload link"><TextInput value={uploadLink} onChange={e => setUploadLink(e.target.value)} placeholder="https://1drv.ms/… (OneDrive link)" /></Field>
+          </div>
+          <div>
+            <Field label="When Upload is clicked">
+              <Select value={uploadMode} onChange={e => setUploadMode(e.target.value)}>
+                <option value="open">Download the PDF and open the link</option>
+                <option value="post">Send the PDF straight to the link</option>
+              </Select>
+            </Field>
+            <div style={help}>
+              A OneDrive "Request files" or shared-folder link is a web page for a person to use — pick the first option, and the PDF is downloaded so it can be dropped into the page that opens. Sending straight to the link only works with a webhook URL that saves the file somewhere.
+            </div>
+          </div>
+        </div>
+
+        {error && <div style={{ fontSize: 12, color: COLORS.dangerText, marginTop: 12 }}>{error}</div>}
+        <Btn kind="solid" onClick={save} style={{ width: "100%", justifyContent: "center", marginTop: 16 }}>Save</Btn>
       </div>
     </div>
   );
@@ -8188,7 +8483,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
           ics209={ics209} setIcs209={setIcs209}
           ics206={ics206} setIcs206={setIcs206}
           logs={logs} setLogs={setLogs}
-          emtfIncidents={emtfIncidents} setEmtfIncidents={setEmtfIncidents}
+          emtfIncidents={emtfIncidents} setEmtfIncidents={setEmtfIncidents} emtfSharing={presets.emtfSharing}
           formsUsed={formsUsed} toggleFormUsed={toggleFormUsed}
         />
       </div>
@@ -8281,11 +8576,12 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const [showManageAssignmentsByType, setShowManageAssignmentsByType] = useState(false);
   const [showManageTasksByType, setShowManageTasksByType] = useState(false);
   const [showParSettings, setShowParSettings] = useState(false);
+  const [showEmtfSharing, setShowEmtfSharing] = useState(false);
   const [showManageResourcesAuth, setShowManageResourcesAuth] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [showArchiveAuth, setShowArchiveAuth] = useState(false);
   const [showChangeArchivePassword, setShowChangeArchivePassword] = useState(false);
-  const [presets, setPresets] = useState({ departments: [], objectives: [], assignments: [], resourceKinds: [], incidentTypes: [], objectivesByType: {}, assignmentsByType: {}, tasksByType: {}, tasks: [], parIntervalMinutes: 15 });
+  const [presets, setPresets] = useState({ departments: [], objectives: [], assignments: [], resourceKinds: [], incidentTypes: [], objectivesByType: {}, assignmentsByType: {}, tasksByType: {}, tasks: [], parIntervalMinutes: 15, emtfSharing: {} });
   const [formsUsed, setFormsUsed] = useState({});
   const [attachments, setAttachments] = useState([]);
   const toggleFormUsed = (key) => setFormsUsed(f => ({ ...f, [key]: !f[key] }));
@@ -8401,7 +8697,8 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
       const tasksByType = p.tasksByType || {};
       const tasks = p.tasks || [];
       const parIntervalMinutes = p.parIntervalMinutes || 15;
-      setPresets({ departments, objectives: p.objectives || [], assignments: p.assignments || [], resourceKinds, incidentTypes, objectivesByType, assignmentsByType, tasksByType, tasks, parIntervalMinutes });
+      // emtfSharing has to be carried through here too (this rebuilds presets from an explicit key list) or the admin modal would open blank.
+      setPresets({ departments, objectives: p.objectives || [], assignments: p.assignments || [], resourceKinds, incidentTypes, objectivesByType, assignmentsByType, tasksByType, tasks, parIntervalMinutes, emtfSharing: p.emtfSharing || {} });
       setReady(true);
       setShowLib(true); // land on the incident library instead of auto-opening one
     })();
@@ -8613,6 +8910,11 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const setParIntervalMinutes = (minutes) => {
     const n = Math.max(1, Number(minutes) || 15);
     const next = { ...presets, parIntervalMinutes: n };
+    setPresets(next);
+    savePresets(next);
+  };
+  const setEmtfSharing = (cfg) => {
+    const next = { ...presets, emtfSharing: cfg };
     setPresets(next);
     savePresets(next);
   };
@@ -9365,7 +9667,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
                   ics209={ics209} setIcs209={setIcs209}
                   ics206={ics206} setIcs206={setIcs206}
                   logs={logs} setLogs={setLogs}
-                  emtfIncidents={emtfIncidents} setEmtfIncidents={setEmtfIncidents}
+                  emtfIncidents={emtfIncidents} setEmtfIncidents={setEmtfIncidents} emtfSharing={presets.emtfSharing}
                   mapData={mapData}
                   objectivesByType={presets.objectivesByType} onAddObjective={addObjectiveForType} incidentTypePresets={presets.incidentTypes}
                   formsUsed={formsUsed} toggleFormUsed={toggleFormUsed}
@@ -9472,6 +9774,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
           onManageAssignmentsByType={() => { setShowAdminMenu(false); setShowManageAssignmentsByType(true); }}
           onManageTasksByType={() => { setShowAdminMenu(false); setShowManageTasksByType(true); }}
           onManageParSettings={() => { setShowAdminMenu(false); setShowParSettings(true); }}
+          onManageEmtfSharing={() => { setShowAdminMenu(false); setShowEmtfSharing(true); }}
         />
       )}
       {showParSettings && (
@@ -9480,6 +9783,14 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
           onBack={() => { setShowParSettings(false); setShowAdminMenu(true); }}
           parIntervalMinutes={presets.parIntervalMinutes}
           onSave={setParIntervalMinutes}
+        />
+      )}
+      {showEmtfSharing && (
+        <EmtfSharingModal
+          onClose={() => setShowEmtfSharing(false)}
+          onBack={() => { setShowEmtfSharing(false); setShowAdminMenu(true); }}
+          value={presets.emtfSharing}
+          onSave={setEmtfSharing}
         />
       )}
       {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} onBack={() => { setShowChangePin(false); setShowAdminMenu(true); }} />}
