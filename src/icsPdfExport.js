@@ -21,10 +21,10 @@ function sanitizeForFilename(s) {
   return String(s || "Untitled").replace(/[\\/:*?"<>|]/g, "").trim().replace(/\s+/g, "_") || "Untitled";
 }
 
-export function icsFilename(formLabel, incident) {
+export function icsFilename(formLabel, incident, suffix) {
   const d = new Date();
   const date = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}-${d.getFullYear()}`;
-  return `${formLabel}_${sanitizeForFilename(incident.name)}_${date}.pdf`;
+  return `${formLabel}_${sanitizeForFilename(incident.name)}${suffix ? `_${sanitizeForFilename(suffix)}` : ""}_${date}.pdf`;
 }
 
 export function mapIcs208Fields(incident, ics208) {
@@ -87,7 +87,27 @@ export function mapIcs208Fields(incident, ics208) {
 // typo, or a template revision that renamed something) can't abort
 // the whole export — it's skipped and logged instead, and everything
 // else still gets filled in.
-export async function fillAndDownloadIcsPdf({ templateFile, filename, textFields, checkboxFields, overlayTexts, fontSizes, multilineFields }) {
+export async function fillAndDownloadIcsPdf({ filename, ...fillArgs }) {
+  const blob = await buildIcsPdfBlob(fillArgs);
+  downloadPdfBlob(blob, filename);
+}
+
+// Triggers a browser download of an already-built PDF blob.
+export function downloadPdfBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Fills a template and returns the finished PDF as a Blob instead of
+// downloading it — split out of fillAndDownloadIcsPdf so the exact
+// same file can also be emailed or uploaded.
+export async function buildIcsPdfBlob({ templateFile, textFields, checkboxFields, overlayTexts, fontSizes, multilineFields }) {
   const templatePath = `${import.meta.env.BASE_URL}ics-pdfs/${templateFile}`;
   const res = await fetch(templatePath);
   if (!res.ok) throw new Error(`Couldn't load the PDF template (${res.status}).`);
@@ -158,15 +178,7 @@ export async function fillAndDownloadIcsPdf({ templateFile, filename, textFields
   form.updateFieldAppearances();
 
   const outBytes = await pdfDoc.save();
-  const blob = new Blob([outBytes], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return new Blob([outBytes], { type: "application/pdf" });
 }
 
 export function mapIcs205Fields(incident, comms) {
@@ -820,8 +832,13 @@ function splitLogDateTime(iso) {
 // 10 activity-log rows; pages 2 and 3 each add 36 more activity-log
 // rows (82 total).
 export function mapIcs214EMTFFields(incident, log) {
-  const from = splitDateTimeLocal(log.opFrom);
-  const to = splitDateTimeLocal(log.opTo);
+  // The operational period is always a full day, 00:00 to 24:00 — only
+  // the dates are entered. Logs saved before the times were fixed may
+  // still hold a full "YYYY-MM-DDTHH:MM" value, so only the date part
+  // of whatever is stored is used.
+  const dateOnly = (v) => splitDateTimeLocal(v ? `${String(v).slice(0, 10)}T00:00` : "").date;
+  const from = { date: dateOnly(log.opFrom), time: "00:00" };
+  const to = { date: dateOnly(log.opTo), time: "24:00" };
   const prepared = splitDateTimeLocal(log.dateTime);
   const preparedCombined = prepared.date && prepared.time ? `${prepared.date} ${prepared.time}` : prepared.date;
   const preparedName = log.preparedByName || log.name;
