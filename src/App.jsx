@@ -19,6 +19,7 @@ import { COLORS, KFD_PATCH_DATA_URI, THEME_CSS } from "./theme";
 import PinGate, { refreshUnlockRecord } from "./PinGate.jsx";
 import { playMaydayTone, stopMaydayTone, unlockAudioContext, setupAudioResumeListeners } from "./audio";
 import { sha256 } from "./pin";
+import { pinHashCollides } from "./pinLevels";
 import { fillAndDownloadIcsPdf, buildIcsPdfBlob, downloadPdfBlob, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields, mapIcs214EMTFFields } from "./icsPdfExport";
 import L from "leaflet";
 import "leaflet-draw";
@@ -1012,7 +1013,7 @@ function InfoTooltip({ children, width = 320 }) {
 // page fits — see mapIcs205Fields' truncatedRowCount) — shown in
 // amber, distinct from an actual failure (a thrown error) shown in
 // red, since a truncated-but-successful export shouldn't read as one.
-function ExportPdfButton({ onExport }) {
+function ExportPdfButton({ onExport, disabled, title }) {
   const [status, setStatus] = useState(""); // "" | "exporting"
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -1034,7 +1035,7 @@ function ExportPdfButton({ onExport }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {error && <span style={{ fontSize: 11, color: COLORS.dangerText }}>{error}</span>}
       {!error && warning && <span style={{ fontSize: 11, color: COLORS.amber }}>{warning}</span>}
-      <Btn kind="subtle" icon={Download} onClick={handleClick} disabled={status === "exporting"} style={{ padding: "6px 11px", fontSize: 12.5 }}>
+      <Btn kind="subtle" icon={Download} onClick={handleClick} disabled={status === "exporting" || disabled} title={disabled ? title : undefined} style={{ padding: "6px 11px", fontSize: 12.5 }}>
         {status === "exporting" ? "Exporting…" : "Export PDF"}
       </Btn>
     </div>
@@ -1045,7 +1046,7 @@ function ExportPdfButton({ onExport }) {
 // confirmation rather than a file landing in Downloads (emailing,
 // uploading). onRun resolves to nothing, or { text, warning } — text
 // is shown as a brief confirmation, warning in amber.
-function PdfActionButton({ icon, label, busyLabel, onRun }) {
+function PdfActionButton({ icon, label, busyLabel, onRun, disabled, title }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // { text?, warning? } | { error }
   useEffect(() => {
@@ -1069,7 +1070,7 @@ function PdfActionButton({ icon, label, busyLabel, onRun }) {
       {result?.error && <span style={{ fontSize: 11, color: COLORS.dangerText }}>{result.error}</span>}
       {result?.text && <span style={{ fontSize: 11, color: COLORS.teal }}>{result.text}</span>}
       {result?.warning && <span style={{ fontSize: 11, color: COLORS.amber }}>{result.warning}</span>}
-      <Btn kind="subtle" icon={icon} onClick={handleClick} disabled={busy} style={{ padding: "6px 11px", fontSize: 12.5 }}>
+      <Btn kind="subtle" icon={icon} onClick={handleClick} disabled={busy || disabled} title={disabled ? title : undefined} style={{ padding: "6px 11px", fontSize: 12.5 }}>
         {busy ? busyLabel : label}
       </Btn>
     </div>
@@ -5106,6 +5107,12 @@ const ICS_FORM_OPTIONS = [
 function TabICSForms(props) {
   const [selected, setSelected] = useState("201full");
   const { formsUsed, toggleFormUsed } = props;
+  // The EMTF PIN's view: just this one form, no "Forms in Use" picker.
+  // Constant for a session (it comes from which PIN was entered), so
+  // returning early here never changes how many hooks run between renders.
+  if (props.onlyForm === "214emtf") {
+    return <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} sharing={props.emtfSharing} />;
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Panel title="Forms in Use" icon={CheckCircle2} right={
@@ -5716,14 +5723,18 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
   return (
     <Panel title="ICS-214 EMTF · Unit / Activity Log (TX EMTF)" icon={ClipboardList} right={
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-        {log && <ExportPdfButton onExport={doExport} />}
-        {log && <PdfActionButton icon={Mail} label="Email" busyLabel="Preparing…" onRun={doEmail} />}
-        {log && <PdfActionButton icon={Upload} label="Upload" busyLabel="Uploading…" onRun={doUpload} />}
+        {/* Always shown, but only usable once a log is selected — they
+            all act on the selected log, and a fresh workspace (the
+            forms-only PIN's starts empty, separate from any incident's
+            data) has none yet, which made them look missing. */}
+        <ExportPdfButton onExport={doExport} disabled={!log} title="Create a log first — this exports the selected log" />
+        <PdfActionButton icon={Mail} label="Email" busyLabel="Preparing…" onRun={doEmail} disabled={!log} title="Create a log first — this emails the selected log" />
+        <PdfActionButton icon={Upload} label="Upload" busyLabel="Uploading…" onRun={doUpload} disabled={!log} title="Create a log first — this uploads the selected log" />
         {activeIncident && <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>}
         <Btn kind="solid" icon={Plus} onClick={addIncident}>New Incident</Btn>
       </div>
     }>
-      {emtfIncidents.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No incidents yet. Start one per deployment/incident this unit is working.</div>}
+      {emtfIncidents.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No incidents yet. Start one per deployment/incident this unit is working, then add a log to it — Export PDF, Email, and Upload act on the selected log.</div>}
       {emtfIncidents.length > 0 && (
         <>
           {/* One EMTF incident can be run alongside another entirely
@@ -7487,7 +7498,7 @@ function ManageIncidentTypesModal({ onClose, onBack, incidentTypes, onAdd, onRen
 // ever renders. Previously, changing the admin password specifically
 // only lived inside the archive browsing flow, several steps removed
 // from where someone would naturally look for it.
-function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onSetIcsFormsPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings, onManageEmtfSharing }) {
+function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedPin, onSetIcsFormsPin, onManageIncidentTypes, onManageResources, onManageObjectives, onManageAssignmentsByType, onManageTasksByType, onManageParSettings, onManageEmtfSharing, onSetEmtfPin }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
       <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
@@ -7499,6 +7510,7 @@ function AdminModal({ onClose, onChangePin, onChangeAdminPassword, onSetLimitedP
           <Btn kind="ghost" icon={KeyRound} onClick={onChangePin} style={{ width: "100%", justifyContent: "center" }}>Change PIN</Btn>
           <Btn kind="ghost" icon={KeyRound} onClick={onSetLimitedPin} style={{ width: "100%", justifyContent: "center" }}>Set Limited-Access PIN</Btn>
           <Btn kind="ghost" icon={KeyRound} onClick={onSetIcsFormsPin} style={{ width: "100%", justifyContent: "center" }}>Set ICS Forms PIN</Btn>
+          <Btn kind="ghost" icon={KeyRound} onClick={onSetEmtfPin} style={{ width: "100%", justifyContent: "center" }}>Set EMTF PIN</Btn>
           <Btn kind="ghost" icon={Lock} onClick={onChangeAdminPassword} style={{ width: "100%", justifyContent: "center" }}>Change Admin Password</Btn>
           <Btn kind="ghost" icon={ClipboardList} onClick={onManageIncidentTypes} style={{ width: "100%", justifyContent: "center" }}>Manage Incident Types</Btn>
           <Btn kind="ghost" icon={Settings} onClick={onManageResources} style={{ width: "100%", justifyContent: "center" }}>Manage Resources</Btn>
@@ -7617,6 +7629,13 @@ function ChangePinModal({ onClose, onBack }) {
     if (next !== confirm) { setError("New PINs don't match."); return; }
     setStatus("saving");
     const nextHash = await sha256(next);
+    // Without this, setting the main PIN to match one of the other
+    // access PINs would hand everyone who uses that PIN full access.
+    if (pinHashCollides(cfg, nextHash, "pinHash")) {
+      setStatus("");
+      setError("This PIN matches another board PIN — choose a different one.");
+      return;
+    }
     await savePinConfig({ ...cfg, pinHash: nextHash });
     refreshUnlockRecord(nextHash);
     setStatus("done");
@@ -7743,9 +7762,9 @@ function LimitedPinModal({ onClose, onBack }) {
     // Must differ from the main PIN — PinGate checks the main PIN
     // first, so an identical limited PIN would always unlock full
     // access and the restriction would never actually apply.
-    if (cfg && nextHash === cfg.pinHash) {
+    if (pinHashCollides(cfg, nextHash, "limitedPinHash")) {
       setStatus("");
-      setError("This PIN matches the main board PIN — choose a different one.");
+      setError("This PIN matches another board PIN — choose a different one.");
       return;
     }
     await savePinConfig({ ...cfg, limitedPinHash: nextHash });
@@ -7809,7 +7828,7 @@ function IcsFormsPinModal({ onClose, onBack }) {
     setStatus("saving");
     const cfg = await loadPinConfig();
     const nextHash = await sha256(next);
-    if (cfg && (nextHash === cfg.pinHash || nextHash === cfg.limitedPinHash)) {
+    if (pinHashCollides(cfg, nextHash, "icsFormsPinHash")) {
       setStatus("");
       setError("This PIN matches another board PIN — choose a different one.");
       return;
@@ -7834,7 +7853,7 @@ function IcsFormsPinModal({ onClose, onBack }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontSize: 11.5, color: COLORS.muted, lineHeight: 1.5 }}>
-              Anyone who enters this PIN skips the incident library and goes straight to a standalone ICS Forms workspace — for filling out and exporting forms without creating or opening an incident. Its data is saved only on that device, not synced anywhere.
+              Anyone who enters this PIN skips the incident library and goes straight to a standalone ICS Forms workspace — for filling out and exporting forms without creating or opening an incident. Its data is shared — a form started on one device shows up when this PIN is entered on another.
             </div>
             <Field label="New ICS Forms PIN">
               <TextInput id="icsforms-pin-new" name="icsforms-pin-new" autoComplete="off" type="password" inputMode="numeric" value={next} onChange={e => setNext(e.target.value.replace(/\D/g, ""))} maxLength={12} />
@@ -7846,6 +7865,69 @@ function IcsFormsPinModal({ onClose, onBack }) {
             {error && <div style={{ color: COLORS.dangerText, fontSize: 12 }}>{error}</div>}
             <Btn kind="solid" onClick={submit} disabled={status === "saving"} style={{ justifyContent: "center" }}>
               {status === "saving" ? "Saving…" : "Save ICS Forms PIN"}
+            </Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A fourth PIN (config.emtfPinHash) that opens the same standalone,
+// incident-free workspace as the ICS Forms PIN, but shows ONLY the
+// ICS-214 EMTF form — nothing else in the app. Same shape as the two
+// modals above, and must differ from every other access PIN for the
+// same reason (see pinLevels.js).
+function EmtfPinModal({ onClose, onBack }) {
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState(""); // "" | "saving" | "done"
+
+  const submit = async () => {
+    setError("");
+    if (next.length < 4) { setError("PIN must be at least 4 digits."); return; }
+    if (next !== confirm) { setError("PINs don't match."); return; }
+    setStatus("saving");
+    const cfg = await loadPinConfig();
+    const nextHash = await sha256(next);
+    if (pinHashCollides(cfg, nextHash, "emtfPinHash")) {
+      setStatus("");
+      setError("This PIN matches another board PIN — choose a different one.");
+      return;
+    }
+    await savePinConfig({ ...cfg, emtfPinHash: nextHash });
+    setStatus("done");
+    setTimeout(onClose, 900);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
+      <div style={{ background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, width: 320, padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onBack && <button onClick={onBack} title="Back to Admin" style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer", display: "flex", alignItems: "center" }}><ChevronLeft size={18} /></button>}
+            <span style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 14 }}>EMTF PIN</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={16} /></button>
+        </div>
+        {status === "done" ? (
+          <div style={{ color: COLORS.teal, fontSize: 13, textAlign: "center", padding: "10px 0" }}>EMTF PIN saved.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 11.5, color: COLORS.muted, lineHeight: 1.5 }}>
+              Anyone who enters this PIN skips the incident library and sees only the ICS-214 EMTF form — nothing else in the app. It uses the same shared workspace as the ICS Forms PIN, so 214 EMTF incidents and logs entered under either PIN show up under both.
+            </div>
+            <Field label="New EMTF PIN">
+              <TextInput id="emtf-pin-new" name="emtf-pin-new" autoComplete="off" type="password" inputMode="numeric" value={next} onChange={e => setNext(e.target.value.replace(/\D/g, ""))} maxLength={12} />
+            </Field>
+            <Field label="Confirm PIN">
+              <TextInput id="emtf-pin-confirm" name="emtf-pin-confirm" autoComplete="off" type="password" inputMode="numeric" value={confirm} onChange={e => setConfirm(e.target.value.replace(/\D/g, ""))} maxLength={12}
+                onKeyDown={e => e.key === "Enter" && submit()} />
+            </Field>
+            {error && <div style={{ color: COLORS.dangerText, fontSize: 12 }}>{error}</div>}
+            <Btn kind="solid" onClick={submit} disabled={status === "saving"} style={{ justifyContent: "center" }}>
+              {status === "saving" ? "Saving…" : "Save EMTF PIN"}
             </Btn>
           </div>
         )}
@@ -8228,8 +8310,8 @@ export default function App() {
     <>
       <GlobalStyles />
       <PinGate>
-        {(lock, accessLevel) => accessLevel === "icsForms"
-          ? <StandaloneICSForms onLock={lock} theme={theme} toggleTheme={toggleTheme} />
+        {(lock, accessLevel) => accessLevel === "icsForms" || accessLevel === "emtf"
+          ? <StandaloneICSForms onLock={lock} theme={theme} toggleTheme={toggleTheme} emtfOnly={accessLevel === "emtf"} />
           : <AppInner onLock={lock} restricted={accessLevel === "limited"} theme={theme} toggleTheme={toggleTheme} />}
       </PinGate>
     </>
@@ -8279,7 +8361,10 @@ function blankStandaloneBlob() {
   };
 }
 
-function StandaloneICSForms({ onLock, theme, toggleTheme }) {
+// emtfOnly (the EMTF PIN) narrows this to just the ICS-214 EMTF form:
+// no form picker, no other forms, and no "Clear" — Clear wipes the
+// whole shared workspace, including everyone else's other forms.
+function StandaloneICSForms({ onLock, theme, toggleTheme, emtfOnly }) {
   const [showMenu, setShowMenu] = useState(false);
   const [ready, setReady] = useState(false);
   const [incident, setIncident] = useState(blankIncident());
@@ -8428,7 +8513,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <img src={KFD_PATCH_DATA_URI} alt="KFD Patch" style={{ width: 34, height: 44, objectFit: "contain", flexShrink: 0 }} />
             <div>
-              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, letterSpacing: "0.03em", lineHeight: 1 }}>ICS FORMS</div>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, letterSpacing: "0.03em", lineHeight: 1 }}>{emtfOnly ? "ICS-214 EMTF" : "ICS FORMS"}</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
@@ -8462,7 +8547,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
                 <button onClick={() => setShowMenu(false)} style={{ background: "none", border: "none", color: COLORS.muted, cursor: "pointer" }}><X size={18} /></button>
               </div>
               <Btn kind="ghost" icon={theme === "dark" ? Sun : Moon} onClick={() => { setShowMenu(false); toggleTheme(); }} style={{ width: "100%", justifyContent: "center" }}>{theme === "dark" ? "Light" : "Dark"}</Btn>
-              <Btn kind="ghost" icon={Trash2} onClick={() => { setShowMenu(false); clearAll(); }} style={{ width: "100%", justifyContent: "center" }}>Clear</Btn>
+              {!emtfOnly && <Btn kind="ghost" icon={Trash2} onClick={() => { setShowMenu(false); clearAll(); }} style={{ width: "100%", justifyContent: "center" }}>Clear</Btn>}
               <Btn kind="ghost" icon={Lock} onClick={() => { setShowMenu(false); onLock(); }} style={{ width: "100%", justifyContent: "center" }}>Lock</Btn>
             </div>
           </div>
@@ -8470,6 +8555,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme }) {
       </div>
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "20px" }}>
         <TabICSForms
+          onlyForm={emtfOnly ? "214emtf" : undefined}
           incident={incident} setIncident={setIncident}
           org={org}
           objectivesByType={presets.objectivesByType || {}}
@@ -8523,6 +8609,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
   const [showChangePin, setShowChangePin] = useState(false);
   const [showLimitedPin, setShowLimitedPin] = useState(false);
   const [showIcsFormsPin, setShowIcsFormsPin] = useState(false);
+  const [showEmtfPin, setShowEmtfPin] = useState(false);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
@@ -9767,6 +9854,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
           onChangePin={() => { setShowAdminMenu(false); setShowChangePin(true); }}
           onSetLimitedPin={() => { setShowAdminMenu(false); setShowLimitedPin(true); }}
           onSetIcsFormsPin={() => { setShowAdminMenu(false); setShowIcsFormsPin(true); }}
+          onSetEmtfPin={() => { setShowAdminMenu(false); setShowEmtfPin(true); }}
           onChangeAdminPassword={() => { setShowAdminMenu(false); setShowChangeArchivePassword(true); }}
           onManageIncidentTypes={() => { setShowAdminMenu(false); setShowManageIncidentTypes(true); }}
           onManageResources={() => { setShowAdminMenu(false); setManageResourcesFromAdmin(true); setShowManageResources(true); }}
@@ -9796,6 +9884,7 @@ function AppInner({ onLock, restricted, theme, toggleTheme }) {
       {showChangePin && <ChangePinModal onClose={() => setShowChangePin(false)} onBack={() => { setShowChangePin(false); setShowAdminMenu(true); }} />}
       {showLimitedPin && <LimitedPinModal onClose={() => setShowLimitedPin(false)} onBack={() => { setShowLimitedPin(false); setShowAdminMenu(true); }} />}
       {showIcsFormsPin && <IcsFormsPinModal onClose={() => setShowIcsFormsPin(false)} onBack={() => { setShowIcsFormsPin(false); setShowAdminMenu(true); }} />}
+      {showEmtfPin && <EmtfPinModal onClose={() => setShowEmtfPin(false)} onBack={() => { setShowEmtfPin(false); setShowAdminMenu(true); }} />}
       {showManageIncidentTypes && (
         <ManageIncidentTypesModal
           onClose={() => setShowManageIncidentTypes(false)}

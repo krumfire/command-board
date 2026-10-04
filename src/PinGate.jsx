@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { COLORS, KFD_PATCH_DATA_URI } from "./theme";
 import { loadPinConfig, savePinConfig } from "./store";
 import { sha256 } from "./pin";
+import { levelForPinHash, hashForLevel } from "./pinLevels";
 import { unlockAudioContext } from "./audio";
 
 const UNLOCK_KEY = "cb_unlock_session";
@@ -69,7 +70,7 @@ export default function PinGate({ children }) {
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [error, setError] = useState("");
-  // "full" | "limited" | "icsForms" — which PIN was used to unlock.
+  // "full" | "limited" | "icsForms" | "emtf" — which PIN was used to unlock.
   // "full"/"limited" determine which tabs AppInner shows once an
   // incident is open (see the restricted prop in App.jsx).
   // "icsForms" bypasses the incident library entirely and goes
@@ -77,9 +78,9 @@ export default function PinGate({ children }) {
   // incident (see StandaloneICSForms in App.jsx) — for filling out
   // and exporting forms (training, practice, ad-hoc use) without the
   // overhead of creating a real incident record.
+  // "emtf" goes to that same standalone workspace but shows only the
+  // ICS-214 EMTF form (see StandaloneICSForms' emtfOnly prop).
   const [accessLevel, setAccessLevel] = useState("full");
-
-  const hashForLevel = (cfg, level) => level === "limited" ? cfg?.limitedPinHash : level === "icsForms" ? cfg?.icsFormsPinHash : cfg?.pinHash;
 
   useEffect(() => {
     (async () => {
@@ -132,17 +133,10 @@ export default function PinGate({ children }) {
     unlockAudioContext();
     setError("");
     const hash = await sha256(pin);
-    if (hash === config.pinHash) {
-      refreshUnlockRecord(hash, "full");
-      setAccessLevel("full");
-      setPhase("unlocked");
-    } else if (config.limitedPinHash && hash === config.limitedPinHash) {
-      refreshUnlockRecord(hash, "limited");
-      setAccessLevel("limited");
-      setPhase("unlocked");
-    } else if (config.icsFormsPinHash && hash === config.icsFormsPinHash) {
-      refreshUnlockRecord(hash, "icsForms");
-      setAccessLevel("icsForms");
+    const level = levelForPinHash(config, hash); // checked in a fixed order — see pinLevels.js
+    if (level) {
+      refreshUnlockRecord(hash, level);
+      setAccessLevel(level);
       setPhase("unlocked");
     } else {
       setError("Incorrect PIN.");
