@@ -1072,6 +1072,11 @@ function PdfActionButton({ icon, label, busyLabel, onRun, disabled, title }) {
       {result?.text && <span style={{ fontSize: 11, color: COLORS.teal }}>{result.text}</span>}
       {result?.link && (
         <a href={result.link.href} target="_blank" rel="noopener noreferrer"
+          // Cleared a beat after the tap rather than during it, so the
+          // link is still in place while the browser starts opening it.
+          // The "left off" warning (if there is one) stays — that's about
+          // the file they're about to upload, not about this prompt.
+          onClick={() => setTimeout(() => setResult(r => (r?.warning ? { warning: r.warning } : null)), 300)}
           style={{ display: "inline-flex", alignItems: "center", padding: "6px 11px", fontSize: 12.5, fontFamily: "'Oswald', sans-serif", borderRadius: 4, border: `1px solid ${COLORS.amber}`, color: COLORS.amber, textDecoration: "none" }}>
           {result.link.label}
         </a>
@@ -6054,7 +6059,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
               {/* Down here, past the sign-off, rather than beside the Name
                   field at the top — so they aren't one stray tap away
                   from the fields people are typing in. */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", borderTop: `1px solid ${COLORS.line}`, marginTop: 24, paddingTop: 16 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-start", borderTop: `1px solid ${COLORS.line}`, marginTop: 24, paddingTop: 16 }}>
                 <Btn kind="subtle" icon={Copy} onClick={() => { copyLog(log.id); scrollToLogTabs(); }} title="Start a new log with the same name, position, agency, operational period, mileage, hotel, and resources — activity entries and sign-off left blank">Copy Log</Btn>
                 <Btn kind="danger" icon={Trash2} onClick={() => setConfirmDelete({ type: "log", id: log.id })}>Delete Log</Btn>
               </div>
