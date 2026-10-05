@@ -1051,7 +1051,7 @@ function PdfActionButton({ icon, label, busyLabel, onRun, disabled, title }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // { text?, warning? } | { error }
   useEffect(() => {
-    if (!result || result.error) return;
+    if (!result || result.error || result.link) return; // a link stays until the next tap
     const t = setTimeout(() => setResult(null), 10000);
     return () => clearTimeout(t);
   }, [result]);
@@ -1070,6 +1070,12 @@ function PdfActionButton({ icon, label, busyLabel, onRun, disabled, title }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {result?.error && <span style={{ fontSize: 11, color: COLORS.dangerText }}>{result.error}</span>}
       {result?.text && <span style={{ fontSize: 11, color: COLORS.teal }}>{result.text}</span>}
+      {result?.link && (
+        <a href={result.link.href} target="_blank" rel="noopener noreferrer"
+          style={{ display: "inline-flex", alignItems: "center", padding: "6px 11px", fontSize: 12.5, fontFamily: "'Oswald', sans-serif", borderRadius: 4, border: `1px solid ${COLORS.amber}`, color: COLORS.amber, textDecoration: "none" }}>
+          {result.link.label}
+        </a>
+      )}
       {result?.warning && <span style={{ fontSize: 11, color: COLORS.amber }}>{result.warning}</span>}
       <Btn kind="subtle" icon={icon} onClick={handleClick} disabled={busy || disabled} title={disabled ? title : undefined} style={{ padding: "6px 11px", fontSize: 12.5 }}>
         {busy ? busyLabel : label}
@@ -5482,6 +5488,12 @@ function validateEmtfSharing(raw) {
   return { cfg: { emailTo: recipients.join(", "), emailEndpoint, uploadLink, uploadMode: raw.uploadMode === "post" ? "post" : "open" } };
 }
 
+// iPhones and iPads (iPadOS reports itself as a Mac, hence the touch check).
+function isIosLike() {
+  if (typeof navigator === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -5782,6 +5794,12 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
     };
     setLogs([...logs, l]); setActiveLog(l.id);
   };
+  // Copy Log and Delete Log now sit at the bottom of a (long) log, so
+  // after either one the page would otherwise be left parked down there
+  // with the new/other log's top out of sight. scrollMarginTop on the
+  // tabs row keeps them clear of the sticky header.
+  const logTabsRef = useRef(null);
+  const scrollToLogTabs = () => setTimeout(() => logTabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   const addEntry = (id) => updateLog(id, { entries: [{ id: uid(), time: nowISO(), text: "" }, ...(logs.find(l => l.id === id)?.entries || [])] });
   const updateEntry = (logId, entryId, patch) => {
     const log = logs.find(l => l.id === logId);
@@ -5867,10 +5885,16 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
       throw new Error("No upload link is set — an admin can add one under Admin → ICS-214 EMTF Sharing.");
     }
     const direct = cfg.uploadMode === "post";
-    // Opened right here, before any await: a window opened later (once
-    // the PDF has finished building) is no longer tied to the tap, and
-    // pop-up blockers will often stop it.
-    const win = direct ? null : window.open("", "_blank");
+    // On iPhone/iPad the one-tap route below ends up stuck on a blank
+    // page (the new tab takes over before the PDF is ready, so pointing
+    // it at the link afterwards never lands). There the PDF is saved
+    // first and the upload page opens from a second tap on a real link,
+    // which iOS always allows.
+    const twoStep = !direct && isIosLike();
+    // Everywhere else the window is opened right here, before any await:
+    // one opened later (once the PDF has finished building) is no longer
+    // tied to the tap, and pop-up blockers will often stop it.
+    const win = direct || twoStep ? null : window.open("", "_blank");
     try {
       const { blob, filename, truncationNote } = await buildEmtfPdf();
       if (direct) {
@@ -5884,6 +5908,13 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
         return { text: "Uploaded.", warning: truncationNote || undefined };
       }
       downloadPdfBlob(blob, filename);
+      if (twoStep) {
+        return {
+          text: "PDF saved to your downloads.",
+          link: { href: cfg.uploadLink, label: "Open upload page" },
+          warning: truncationNote || undefined,
+        };
+      }
       if (win) { win.opener = null; win.location.href = cfg.uploadLink; }
       else window.open(cfg.uploadLink, "_blank");
       return {
@@ -5945,7 +5976,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
               {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
       {logs.length > 0 && (
         <>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+          <div ref={logTabsRef} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14, scrollMarginTop: 130 }}>
             {logs.map(l => (
               <button key={l.id} onClick={() => setActiveLog(l.id)} style={{
                 padding: "6px 11px", borderRadius: 4, fontSize: 12.5, cursor: "pointer",
@@ -5967,14 +5998,10 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
                 <Field label="Date To (24:00)"><TextInput type="date" value={(log.opTo || "").slice(0, 10)} onChange={e => updateLog(log.id, { opTo: e.target.value })} /></Field>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr)) auto", gap: 10, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
                 <Field label="Name"><TextInput value={log.name} onChange={e => updateLog(log.id, { name: e.target.value })} /></Field>
                 <Field label="ICS Position / TX EMTF Role"><TextInput value={log.position} onChange={e => updateLog(log.id, { position: e.target.value })} /></Field>
                 <Field label="Home Agency (and TX EMTF Call Sign)"><TextInput value={log.agency} onChange={e => updateLog(log.id, { agency: e.target.value })} /></Field>
-                <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
-                  <Btn kind="subtle" icon={Copy} onClick={() => copyLog(log.id)} title="Start a new log with the same name, position, agency, operational period, mileage, hotel, and resources — activity entries and sign-off left blank">Copy Log</Btn>
-                  <Btn kind="danger" icon={Trash2} onClick={() => setConfirmDelete({ type: "log", id: log.id })}>Delete Log</Btn>
-                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 18 }}>
@@ -6023,6 +6050,14 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
                 <Field label="Signature"><TextInput value={log.signature} onChange={e => updateLog(log.id, { signature: e.target.value })} placeholder="Type name to sign" /></Field>
                 <Field label="Date / Time"><TextInput type="datetime-local" value={log.dateTime} onChange={e => updateLog(log.id, { dateTime: e.target.value })} /></Field>
               </div>
+
+              {/* Down here, past the sign-off, rather than beside the Name
+                  field at the top — so they aren't one stray tap away
+                  from the fields people are typing in. */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", borderTop: `1px solid ${COLORS.line}`, marginTop: 24, paddingTop: 16 }}>
+                <Btn kind="subtle" icon={Copy} onClick={() => { copyLog(log.id); scrollToLogTabs(); }} title="Start a new log with the same name, position, agency, operational period, mileage, hotel, and resources — activity entries and sign-off left blank">Copy Log</Btn>
+                <Btn kind="danger" icon={Trash2} onClick={() => setConfirmDelete({ type: "log", id: log.id })}>Delete Log</Btn>
+              </div>
             </div>
           )}
         </>
@@ -6052,7 +6087,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
     )}
     {confirmLog && (
       <EmtfConfirmDelete title="Delete Log?" message={deleteLogMessage(confirmLog)} confirmLabel="Delete Log"
-        onConfirm={() => { removeLog(confirmLog.id); setConfirmDelete(null); }} onCancel={() => setConfirmDelete(null)} />
+        onConfirm={() => { removeLog(confirmLog.id); setConfirmDelete(null); scrollToLogTabs(); }} onCancel={() => setConfirmDelete(null)} />
     )}
     {setupIncident && <EmtfIncidentSetupModal mode="pin" incidentName={setupIncident.name} onSave={({ pin }) => savePin(setupIncident.id, pin)} onCancel={() => setPinSetupId(null)} />}
     </>
