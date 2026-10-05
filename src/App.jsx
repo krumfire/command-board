@@ -20,6 +20,7 @@ import PinGate, { refreshUnlockRecord } from "./PinGate.jsx";
 import { playMaydayTone, stopMaydayTone, unlockAudioContext, setupAudioResumeListeners } from "./audio";
 import { sha256 } from "./pin";
 import { pinHashCollides } from "./pinLevels";
+import { hashIncidentPin, isIncidentOpen, firstOpenIncidentId, validateIncidentSetup } from "./incidentPin";
 import { fillAndDownloadIcsPdf, buildIcsPdfBlob, downloadPdfBlob, icsFilename, mapIcs208Fields, mapIcs205Fields, mapIcs206Fields, mapIcs208HMFields, mapIcs201Fields, mapIcs209Fields, mapIcs214Fields, mapIcs215AFields, mapIcs214EMTFFields } from "./icsPdfExport";
 import L from "leaflet";
 import "leaflet-draw";
@@ -5111,7 +5112,7 @@ function TabICSForms(props) {
   // Constant for a session (it comes from which PIN was entered), so
   // returning early here never changes how many hooks run between renders.
   if (props.onlyForm === "214emtf") {
-    return <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} sharing={props.emtfSharing} />;
+    return <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} sharing={props.emtfSharing} incidentPins={props.emtfIncidentPins} />;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -5151,7 +5152,7 @@ function TabICSForms(props) {
       {selected === "209" && <Tab209 ics209={props.ics209} setIcs209={props.setIcs209} incident={props.incident} setIncident={props.setIncident} mapData={props.mapData} />}
       {selected === "206" && <Tab206 ics206={props.ics206} setIcs206={props.setIcs206} incident={props.incident} setIncident={props.setIncident} />}
       {selected === "214" && <Tab214 logs={props.logs} setLogs={props.setLogs} incident={props.incident} setIncident={props.setIncident} />}
-      {selected === "214emtf" && <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} sharing={props.emtfSharing} />}
+      {selected === "214emtf" && <Tab214EMTF emtfIncidents={props.emtfIncidents} setEmtfIncidents={props.setEmtfIncidents} sharing={props.emtfSharing} incidentPins={props.emtfIncidentPins} />}
     </div>
   );
 }
@@ -5546,24 +5547,160 @@ async function emailPdf({ blob, filename, subject, body, to }) {
   return "PDF saved to your downloads — attach it to the email draft that just opened.";
 }
 
-function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
+// ---- Incident PIN prompts (ICS-214 EMTF, standalone workspace) ----
+// Styled to match the board's lock screen (PinGate): the KFD patch,
+// a title, and a centered PIN field over a red button.
+const emtfPinInputStyle = {
+  width: "100%", background: COLORS.panel2, border: `1px solid ${COLORS.line}`,
+  borderRadius: 4, color: COLORS.text, padding: "10px 12px", fontSize: 18,
+  letterSpacing: "0.3em", textAlign: "center", fontFamily: "'Oswald', sans-serif",
+  outline: "none", boxSizing: "border-box",
+};
+const emtfPinButtonStyle = {
+  width: "100%", marginTop: 14, padding: "10px 14px", borderRadius: 4,
+  background: COLORS.red, color: "#fff", border: "none", fontWeight: 600,
+  fontSize: 14, cursor: "pointer",
+};
+const emtfPinLinkStyle = { background: "none", border: "none", color: COLORS.muted, fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline" };
+
+function EmtfPinCard({ title, subtitle, children }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+      <div style={{ width: 340, maxWidth: "100%", background: COLORS.panel, border: `1px solid ${COLORS.line}`, borderRadius: 8, padding: 28, color: COLORS.text }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+          <img src={KFD_PATCH_DATA_URI} alt="KFD Patch" style={{ width: 34, height: 44, objectFit: "contain", flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, letterSpacing: "0.03em", wordBreak: "break-word" }}>{title}</div>
+            <div style={{ fontSize: 10.5, color: COLORS.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>{subtitle}</div>
+          </div>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Shown when someone picks an incident that has a PIN and hasn't been
+// unlocked on this device yet.
+function EmtfIncidentPinPrompt({ incident, onUnlock, onCancel, onForgot }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setError("");
+    if (pin.length !== 4) { setError("Enter the 4-digit PIN."); return; }
+    setBusy(true);
+    const hash = await hashIncidentPin(incident.id, pin);
+    setBusy(false);
+    if (hash === incident.pinHash) onUnlock();
+    else { setError("Incorrect PIN."); setPin(""); }
+  };
+  return (
+    <EmtfPinCard title={incident.name || "Untitled Incident"} subtitle="Enter incident PIN to open">
+      <input id="emtf-incident-pin" name="emtf-incident-pin" autoComplete="off" style={emtfPinInputStyle} type="password" inputMode="numeric" autoFocus placeholder="PIN"
+        value={pin} maxLength={4} onChange={e => setPin(e.target.value.replace(/\D/g, ""))} onKeyDown={e => e.key === "Enter" && submit()} />
+      <button style={emtfPinButtonStyle} onClick={submit} disabled={busy}><Lock size={13} style={{ marginRight: 6, verticalAlign: -2 }} />Open Incident</button>
+      {error && <div style={{ color: "#E4796B", fontSize: 12.5, marginTop: 10, textAlign: "center" }}>{error}</div>}
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14 }}>
+        <button style={emtfPinLinkStyle} onClick={onCancel}>Cancel</button>
+        <button style={emtfPinLinkStyle} onClick={onForgot}>Forgot PIN?</button>
+      </div>
+    </EmtfPinCard>
+  );
+}
+
+// mode "create": name + new PIN for a brand-new incident.
+// mode "pin": just a new PIN for an incident that's already open.
+function EmtfIncidentSetupModal({ mode, incidentName, onSave, onCancel }) {
+  const create = mode === "create";
+  const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    const err = validateIncidentSetup({ name, pin, confirm, requireName: create });
+    if (err) { setError(err); return; }
+    setError("");
+    setBusy(true);
+    try { await onSave({ name: name.trim(), pin }); }
+    catch { setError("Couldn't save — try again."); setBusy(false); }
+  };
+  return (
+    <EmtfPinCard title={create ? "New Incident" : (incidentName || "Untitled Incident")} subtitle={create ? "Name it and set a 4-digit PIN" : "Set a new 4-digit PIN"}>
+      {create && <Field label="Incident Name"><TextInput autoFocus value={name} onChange={e => setName(e.target.value)} /></Field>}
+      <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.5, margin: "12px 0" }}>
+        Anyone opening this incident from this form will need the PIN, so crews don't add logs to the wrong one. Write it down — if it's lost, an admin can open the incident with the admin password.
+      </div>
+      <input id="emtf-new-pin" name="emtf-new-pin" autoComplete="off" style={emtfPinInputStyle} type="password" inputMode="numeric" autoFocus={!create} placeholder="4-digit PIN"
+        value={pin} maxLength={4} onChange={e => setPin(e.target.value.replace(/\D/g, ""))} />
+      <input id="emtf-new-pin-confirm" name="emtf-new-pin-confirm" autoComplete="off" style={{ ...emtfPinInputStyle, marginTop: 10 }} type="password" inputMode="numeric" placeholder="Confirm PIN"
+        value={confirm} maxLength={4} onChange={e => setConfirm(e.target.value.replace(/\D/g, ""))} onKeyDown={e => e.key === "Enter" && submit()} />
+      <button style={emtfPinButtonStyle} onClick={submit} disabled={busy}>{create ? "Create Incident" : "Save PIN"}</button>
+      {error && <div style={{ color: "#E4796B", fontSize: 12.5, marginTop: 10, textAlign: "center" }}>{error}</div>}
+      <div style={{ marginTop: 14 }}><button style={emtfPinLinkStyle} onClick={onCancel}>Cancel</button></div>
+    </EmtfPinCard>
+  );
+}
+
+function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) {
   // TX EMTF deployments can run multiple genuinely separate incidents
   // at once (different call signs sent to different incidents on the
   // same activation), so this tab manages its own list of incidents —
   // each with its own name and its own set of logs underneath it —
   // entirely independent of the single shared `incident` the rest of
   // the app (Tactical Worksheet, other ICS forms) is built around.
-  const [activeIncidentId, setActiveIncidentId] = useState(emtfIncidents[0]?.id || null);
-  useEffect(() => { if (!emtfIncidents.find(i => i.id === activeIncidentId)) setActiveIncidentId(emtfIncidents[0]?.id || null); }, [emtfIncidents]);
+  // Incident PINs — standalone workspace only. StandaloneICSForms passes
+  // `incidentPins`; the full app leaves it off, where each incident is
+  // already its own separate record. An incident created here gets a
+  // 4-digit PIN, and opening it later from this form needs that PIN, so
+  // a crew working one incident can't accidentally open another and add
+  // logs to it. `unlocked` is held up in StandaloneICSForms (in memory
+  // only), so it survives switching between forms but not a Lock or a
+  // reload. A guard against mix-ups, not security — see incidentPin.js.
+  const pinsOn = !!incidentPins;
+  const unlocked = incidentPins?.unlocked;
+  const isOpen = (i) => isIncidentOpen(i, unlocked, pinsOn);
+  const [activeIncidentId, setActiveIncidentId] = useState(firstOpenIncidentId(emtfIncidents, unlocked, pinsOn));
+  useEffect(() => {
+    if (!emtfIncidents.find(i => i.id === activeIncidentId && isOpen(i))) setActiveIncidentId(firstOpenIncidentId(emtfIncidents, unlocked, pinsOn));
+  }, [emtfIncidents, unlocked]);
+
+  const [showNewIncident, setShowNewIncident] = useState(false);
+  const [pinPromptId, setPinPromptId] = useState(null);         // locked incident being opened
+  const [adminOverrideId, setAdminOverrideId] = useState(null); // ...opened via "Forgot PIN?"
+  const [pinSetupId, setPinSetupId] = useState(null);           // incident getting a new PIN
+  const byId = (id) => emtfIncidents.find(i => i.id === id);
 
   const addIncident = () => {
     const inc = { id: uid(), name: "", logs: [] };
     setEmtfIncidents([...emtfIncidents, inc]); setActiveIncidentId(inc.id);
   };
+  const createIncident = async ({ name, pin }) => {
+    const id = uid();
+    const pinHash = await hashIncidentPin(id, pin);
+    setEmtfIncidents(prev => [...prev, { id, name, pinHash, logs: [] }]);
+    incidentPins.setUnlocked(prev => ({ ...prev, [id]: true })); // whoever creates it is already in
+    setActiveIncidentId(id);
+    setShowNewIncident(false);
+  };
+  const unlockIncident = (id) => {
+    incidentPins.setUnlocked(prev => ({ ...prev, [id]: true }));
+    setActiveIncidentId(id);
+  };
+  const openIncident = (i) => { if (isOpen(i)) setActiveIncidentId(i.id); else setPinPromptId(i.id); };
+  const savePin = async (id, pin) => {
+    const pinHash = await hashIncidentPin(id, pin);
+    setEmtfIncidents(prev => prev.map(i => i.id === id ? { ...i, pinHash } : i));
+    setPinSetupId(null);
+  };
   const updateIncident = (id, patch) => setEmtfIncidents(emtfIncidents.map(i => i.id === id ? { ...i, ...patch } : i));
   const removeIncident = (id) => setEmtfIncidents(emtfIncidents.filter(i => i.id !== id));
 
-  const activeIncident = emtfIncidents.find(i => i.id === activeIncidentId);
+  const activeIncident = emtfIncidents.find(i => i.id === activeIncidentId && isOpen(i));
+  const promptIncident = byId(pinPromptId);
+  const overrideIncident = byId(adminOverrideId);
+  const setupIncident = byId(pinSetupId);
   // Everything below this point — all the log-level CRUD and the form
   // UI itself — is unchanged from before the multi-incident feature:
   // it already only ever worked with a local `logs`/`setLogs` pair, so
@@ -5721,6 +5858,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
   };
 
   return (
+    <>
     <Panel title="ICS-214 EMTF · Unit / Activity Log (TX EMTF)" icon={ClipboardList} right={
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {/* Always shown, but only usable once a log is selected — they
@@ -5731,7 +5869,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
         <PdfActionButton icon={Mail} label="Email" busyLabel="Preparing…" onRun={doEmail} disabled={!log} title="Create a log first — this emails the selected log" />
         <PdfActionButton icon={Upload} label="Upload" busyLabel="Uploading…" onRun={doUpload} disabled={!log} title="Create a log first — this uploads the selected log" />
         {activeIncident && <Btn kind="subtle" icon={Plus} onClick={addLog}>New Log</Btn>}
-        <Btn kind="solid" icon={Plus} onClick={addIncident}>New Incident</Btn>
+        <Btn kind="solid" icon={Plus} onClick={pinsOn ? () => setShowNewIncident(true) : addIncident}>New Incident</Btn>
       </div>
     }>
       {emtfIncidents.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No incidents yet. Start one per deployment/incident this unit is working, then add a log to it — Export PDF, Email, and Upload act on the selected log.</div>}
@@ -5744,20 +5882,24 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
               whichever incident is selected here. */}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
             {emtfIncidents.map(i => (
-              <button key={i.id} onClick={() => setActiveIncidentId(i.id)} style={{
+              <button key={i.id} onClick={() => openIncident(i)} style={{
                 padding: "6px 11px", borderRadius: 4, fontSize: 12.5, cursor: "pointer",
-                background: activeIncidentId === i.id ? COLORS.amber : COLORS.panel2,
-                color: activeIncidentId === i.id ? "#1a1a1a" : COLORS.text,
-                border: `1px solid ${activeIncidentId === i.id ? COLORS.amber : COLORS.line}`,
+                background: activeIncident?.id === i.id ? COLORS.amber : COLORS.panel2,
+                color: activeIncident?.id === i.id ? "#1a1a1a" : COLORS.text,
+                border: `1px solid ${activeIncident?.id === i.id ? COLORS.amber : COLORS.line}`,
                 fontWeight: 600,
-              }}>{i.name || "Untitled Incident"}</button>
+              }}>{!isOpen(i) && <Lock size={11} style={{ marginRight: 5, verticalAlign: -1 }} />}{i.name || "Untitled Incident"}</button>
             ))}
           </div>
+          {!activeIncident && <div style={{ fontSize: 13, color: COLORS.faint, marginBottom: 14 }}>Select an incident above{pinsOn ? " and enter its PIN" : ""} to open it.</div>}
           {activeIncident && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr)) auto", gap: 12, marginBottom: 18, alignItems: "end" }}>
                 <Field label="Incident Name"><TextInput value={activeIncident.name} onChange={e => updateIncident(activeIncident.id, { name: e.target.value })} /></Field>
-                <Btn kind="danger" icon={Trash2} onClick={() => removeIncident(activeIncident.id)}>Delete Incident</Btn>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {pinsOn && <Btn kind="subtle" icon={KeyRound} onClick={() => setPinSetupId(activeIncident.id)}>{activeIncident.pinHash ? "Change PIN" : "Set PIN"}</Btn>}
+                  <Btn kind="danger" icon={Trash2} onClick={() => removeIncident(activeIncident.id)}>Delete Incident</Btn>
+                </div>
               </div>
               {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
       {logs.length > 0 && (
@@ -5849,6 +5991,22 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing }) {
         </>
       )}
     </Panel>
+
+    {showNewIncident && <EmtfIncidentSetupModal mode="create" onSave={createIncident} onCancel={() => setShowNewIncident(false)} />}
+    {promptIncident && (
+      <EmtfIncidentPinPrompt incident={promptIncident}
+        onUnlock={() => { unlockIncident(promptIncident.id); setPinPromptId(null); }}
+        onCancel={() => setPinPromptId(null)}
+        onForgot={() => { setPinPromptId(null); setAdminOverrideId(promptIncident.id); }} />
+    )}
+    {overrideIncident && (
+      <PasswordConfirmModal title="Admin Password Required"
+        message={`Enter the admin password to open "${overrideIncident.name || "this incident"}" without its PIN.`}
+        onConfirm={() => { unlockIncident(overrideIncident.id); setAdminOverrideId(null); }}
+        onCancel={() => setAdminOverrideId(null)} />
+    )}
+    {setupIncident && <EmtfIncidentSetupModal mode="pin" incidentName={setupIncident.name} onSave={({ pin }) => savePin(setupIncident.id, pin)} onCancel={() => setPinSetupId(null)} />}
+    </>
   );
 }
 
@@ -8366,6 +8524,11 @@ function blankStandaloneBlob() {
 // whole shared workspace, including everyone else's other forms.
 function StandaloneICSForms({ onLock, theme, toggleTheme, emtfOnly }) {
   const [showMenu, setShowMenu] = useState(false);
+  // Which PIN-protected EMTF incidents have been opened on this device
+  // this session. Lives here (not in the EMTF tab) so it survives
+  // switching to another form and back, but it is deliberately in
+  // memory only — a Lock or reload clears it and the PINs are asked again.
+  const [unlockedEmtf, setUnlockedEmtf] = useState({});
   const [ready, setReady] = useState(false);
   const [incident, setIncident] = useState(blankIncident());
   const [org, setOrg] = useState(blankOrg());
@@ -8556,6 +8719,7 @@ function StandaloneICSForms({ onLock, theme, toggleTheme, emtfOnly }) {
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "20px" }}>
         <TabICSForms
           onlyForm={emtfOnly ? "214emtf" : undefined}
+          emtfIncidentPins={{ unlocked: unlockedEmtf, setUnlocked: setUnlockedEmtf }}
           incident={incident} setIncident={setIncident}
           org={org}
           objectivesByType={presets.objectivesByType || {}}
