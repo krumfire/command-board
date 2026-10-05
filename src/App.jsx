@@ -5643,6 +5643,44 @@ function EmtfIncidentSetupModal({ mode, incidentName, onSave, onCancel }) {
   );
 }
 
+// ---- Delete confirmations (ICS-214 EMTF) ----
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// Says what will actually be lost, so "Delete" isn't a blind click.
+function deleteIncidentMessage(inc) {
+  const logs = inc.logs || [];
+  const entries = logs.reduce((n, l) => n + (l.entries || []).length, 0);
+  const label = `"${inc.name || "Untitled Incident"}"`;
+  if (logs.length === 0) return `${label} has no logs yet and will be deleted.`;
+  return `${label} and its ${plural(logs.length, "log")} (${plural(entries, "activity entry", "activity entries")}) will be permanently deleted.`;
+}
+function deleteLogMessage(log) {
+  const entries = (log.entries || []).length;
+  // Logs default to a date for a name, so the position goes in too.
+  const label = `"${[log.name, log.position].filter(Boolean).join(" — ") || "Untitled Log"}"`;
+  if (entries === 0) return `The log ${label} has no activity entries and will be deleted.`;
+  return `The log ${label} and its ${plural(entries, "activity entry", "activity entries")} will be permanently deleted.`;
+}
+
+function EmtfConfirmDelete({ title, message, confirmLabel, onConfirm, onCancel }) {
+  // Escape backs out — the safe choice.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return (
+    <EmtfPinCard title={title} subtitle="Confirm deletion">
+      <div style={{ fontSize: 13, color: COLORS.text, lineHeight: 1.55 }}>{message}</div>
+      <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.5, marginTop: 10 }}>This can't be undone, and it's removed on every device.</div>
+      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+        <Btn kind="subtle" onClick={onCancel} style={{ flex: 1, justifyContent: "center" }}>Cancel</Btn>
+        <Btn kind="danger" icon={Trash2} onClick={onConfirm} style={{ flex: 1, justifyContent: "center" }}>{confirmLabel}</Btn>
+      </div>
+    </EmtfPinCard>
+  );
+}
+
 function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) {
   // TX EMTF deployments can run multiple genuinely separate incidents
   // at once (different call signs sent to different incidents on the
@@ -5670,6 +5708,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
   const [pinPromptId, setPinPromptId] = useState(null);         // locked incident being opened
   const [adminOverrideId, setAdminOverrideId] = useState(null); // ...opened via "Forgot PIN?"
   const [pinSetupId, setPinSetupId] = useState(null);           // incident getting a new PIN
+  const [confirmDelete, setConfirmDelete] = useState(null);       // { type: "incident" | "log", id } awaiting confirmation
   const byId = (id) => emtfIncidents.find(i => i.id === id);
 
   const addIncident = () => {
@@ -5709,6 +5748,8 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
   // to make the whole rest of the component incident-scoped for free.
   const logs = activeIncident?.logs || [];
   const setLogs = (newLogs) => updateIncident(activeIncidentId, { logs: newLogs });
+  const confirmIncident = confirmDelete?.type === "incident" ? byId(confirmDelete.id) : null;
+  const confirmLog = confirmDelete?.type === "log" ? logs.find(l => l.id === confirmDelete.id) : null;
 
   const [activeLog, setActiveLog] = useState(logs[0]?.id || null);
   useEffect(() => { if (!logs.find(l => l.id === activeLog)) setActiveLog(logs[0]?.id || null); }, [logs]);
@@ -5898,7 +5939,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
                 <Field label="Incident Name"><TextInput value={activeIncident.name} onChange={e => updateIncident(activeIncident.id, { name: e.target.value })} /></Field>
                 <div style={{ display: "flex", gap: 8 }}>
                   {pinsOn && <Btn kind="subtle" icon={KeyRound} onClick={() => setPinSetupId(activeIncident.id)}>{activeIncident.pinHash ? "Change PIN" : "Set PIN"}</Btn>}
-                  <Btn kind="danger" icon={Trash2} onClick={() => removeIncident(activeIncident.id)}>Delete Incident</Btn>
+                  <Btn kind="danger" icon={Trash2} onClick={() => setConfirmDelete({ type: "incident", id: activeIncident.id })}>Delete Incident</Btn>
                 </div>
               </div>
               {logs.length === 0 && <div style={{ fontSize: 13, color: COLORS.faint }}>No activity logs yet. Add one per unit, position, or individual.</div>}
@@ -5932,7 +5973,7 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
                 <Field label="Home Agency (and TX EMTF Call Sign)"><TextInput value={log.agency} onChange={e => updateLog(log.id, { agency: e.target.value })} /></Field>
                 <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
                   <Btn kind="subtle" icon={Copy} onClick={() => copyLog(log.id)} title="Start a new log with the same name, position, agency, operational period, mileage, hotel, and resources — activity entries and sign-off left blank">Copy Log</Btn>
-                  <Btn kind="danger" icon={Trash2} onClick={() => removeLog(log.id)}>Delete Log</Btn>
+                  <Btn kind="danger" icon={Trash2} onClick={() => setConfirmDelete({ type: "log", id: log.id })}>Delete Log</Btn>
                 </div>
               </div>
 
@@ -6004,6 +6045,14 @@ function Tab214EMTF({ emtfIncidents, setEmtfIncidents, sharing, incidentPins }) 
         message={`Enter the admin password to open "${overrideIncident.name || "this incident"}" without its PIN.`}
         onConfirm={() => { unlockIncident(overrideIncident.id); setAdminOverrideId(null); }}
         onCancel={() => setAdminOverrideId(null)} />
+    )}
+    {confirmIncident && (
+      <EmtfConfirmDelete title="Delete Incident?" message={deleteIncidentMessage(confirmIncident)} confirmLabel="Delete Incident"
+        onConfirm={() => { removeIncident(confirmIncident.id); setConfirmDelete(null); }} onCancel={() => setConfirmDelete(null)} />
+    )}
+    {confirmLog && (
+      <EmtfConfirmDelete title="Delete Log?" message={deleteLogMessage(confirmLog)} confirmLabel="Delete Log"
+        onConfirm={() => { removeLog(confirmLog.id); setConfirmDelete(null); }} onCancel={() => setConfirmDelete(null)} />
     )}
     {setupIncident && <EmtfIncidentSetupModal mode="pin" incidentName={setupIncident.name} onSave={({ pin }) => savePin(setupIncident.id, pin)} onCancel={() => setPinSetupId(null)} />}
     </>
