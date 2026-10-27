@@ -109,21 +109,33 @@ function getAudioEl() {
 // including totally unrelated ones like checking off a PAR box, and
 // without muting it here that produced an audible "chirp" on every
 // single tap rather than only during a genuine Mayday.
+// True while a real alarm is meant to be sounding. Priming must never
+// touch the element then: it would pause/rewind the live siren.
+let alarmWanted = false;
+
 export function unlockAudioContext() {
+  if (alarmWanted) return;
   try {
     const el = getAudioEl();
-    const originalVolume = el.volume;
-    el.volume = 0;
-    const restore = () => { el.pause(); el.currentTime = 0; el.volume = originalVolume; };
+    // el.muted, NOT el.volume: iOS Safari treats volume as read-only
+    // (always 1), so "volume = 0" never silenced the priming play and
+    // the siren chirped/blared on the first tap (the PIN entry).
+    el.muted = true;
+    const restore = () => {
+      if (alarmWanted) return; // a real alarm started meanwhile
+      el.pause(); el.currentTime = 0; el.muted = false;
+    };
     const p = el.play();
-    if (p && p.then) p.then(restore).catch(restore);
+    if (p && p.then) p.then(restore).catch(() => { if (!alarmWanted) el.muted = false; });
     else restore();
   } catch { /* unsupported — nothing to do */ }
 }
 
 export function playMaydayTone() {
   try {
+    alarmWanted = true;
     const el = getAudioEl();
+    el.muted = false;
     el.currentTime = 0;
     const p = el.play();
     if (p && p.catch) p.catch(() => { /* still blocked by autoplay policy — nothing more to try at this point */ });
@@ -131,6 +143,7 @@ export function playMaydayTone() {
 }
 
 export function stopMaydayTone() {
+  alarmWanted = false;
   try {
     if (sharedAudioEl) { sharedAudioEl.pause(); sharedAudioEl.currentTime = 0; }
   } catch { /* ignore */ }
